@@ -55,3 +55,19 @@ def detect_coords(ds):
             "Could not identify latitude/longitude coordinates in this file"
         )
     return {"lat": lat, "lon": lon, "time": time}
+
+
+def normalize_coords(ds, coords):
+    """Return a view of ds with ascending latitude and longitude in [-180, 180].
+
+    xarray's sortby/assign_coords operate on the (small) coordinate arrays and
+    keep data variables lazy, so this is cheap even for huge files.
+    """
+    lat, lon = coords["lat"], coords["lon"]
+    if float(ds[lat][0]) > float(ds[lat][-1]):
+        ds = ds.sortby(lat)
+    lon_vals = ds[lon].values
+    if float(lon_vals.max()) > 180.0:
+        ds = ds.assign_coords({lon: ((lon_vals + 180.0) % 360.0) - 180.0})
+        ds = ds.sortby(lon)
+    return ds

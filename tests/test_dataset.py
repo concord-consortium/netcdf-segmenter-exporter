@@ -2,7 +2,7 @@ import numpy as np
 import pytest
 import xarray as xr
 
-from server.dataset import detect_coords
+from server.dataset import detect_coords, normalize_coords
 
 
 def test_detect_coords_standard_names(sample_nc):
@@ -93,3 +93,32 @@ def test_detect_coords_time_by_dtype_with_nonstandard_name():
         },
     )
     assert detect_coords(ds)["time"] == "forecast_time"
+
+
+def test_normalize_sorts_lat_ascending_and_wraps_lon(rotated_nc):
+    with xr.open_dataset(rotated_nc) as ds:
+        coords = detect_coords(ds)
+        out = normalize_coords(ds, coords)
+        lats = out["lat"].values
+        lons = out["lon"].values
+        assert (np.diff(lats) > 0).all()
+        assert (np.diff(lons) > 0).all()
+        assert lons.min() >= -180.0 and lons.max() <= 180.0
+
+
+def test_normalize_preserves_values(rotated_nc):
+    with xr.open_dataset(rotated_nc) as orig:
+        coords = detect_coords(orig)
+        out = normalize_coords(orig, coords)
+        # lon 355 in the 0..360 file becomes lon -5 after normalization
+        expected = float(orig["temperature"].isel(time=0).sel(lat=85.0, lon=355.0))
+        actual = float(out["temperature"].isel(time=0).sel(lat=85.0, lon=-5.0))
+        assert actual == expected
+
+
+def test_normalize_leaves_wellbehaved_file_alone(sample_nc):
+    with xr.open_dataset(sample_nc) as ds:
+        coords = detect_coords(ds)
+        out = normalize_coords(ds, coords)
+        assert (out["lat"].values == ds["lat"].values).all()
+        assert (out["lon"].values == ds["lon"].values).all()
