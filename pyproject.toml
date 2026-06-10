@@ -28,3 +28,8 @@ packages = ["server"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+filterwarnings = [
+    # netCDF4 1.7.x wheel built against an older numpy; cosmetic Cython ABI
+    # size check, confirmed harmless (data round-trips bit-exactly)
+    "ignore:numpy.ndarray size changed:RuntimeWarning",
+]
