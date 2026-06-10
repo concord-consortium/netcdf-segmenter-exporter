@@ -1,6 +1,9 @@
 """Open netCDF files lazily and understand their coordinate layout."""
 
+from pathlib import Path
+
 import numpy as np
+import pandas as pd
 import xarray as xr
 
 LAT_NAMES = {"lat", "latitude"}
@@ -84,3 +87,83 @@ def normalize_coords(ds, coords):
     if float(ds[lon][0]) > float(ds[lon][-1]):
         ds = ds.sortby(lon)
     return ds
+
+
+def _iso(value):
+    """Render a time coordinate value as an ISO-8601 string."""
+    try:
+        return pd.Timestamp(value).isoformat()
+    except (ValueError, TypeError):
+        return str(value)  # cftime / non-standard calendars
+
+
+class DatasetManager:
+    """Holds the single currently-open dataset, lazily loaded."""
+
+    def __init__(self):
+        self.ds = None
+        self.coords = None
+        self.path = None
+
+    def open(self, path):
+        path = Path(path)
+        if not path.exists():
+            raise FileNotFoundError(f"File not found: {path}")
+        try:
+            ds = xr.open_dataset(path)  # lazy: no data variables are read yet
+        except Exception as exc:
+            raise ValueError(f"Could not open {path} as netCDF: {exc}") from exc
+        try:
+            coords = detect_coords(ds)
+            ds = normalize_coords(ds, coords)
+        except ValueError:
+            ds.close()
+            raise
+        self.close()
+        self.ds, self.coords, self.path = ds, coords, path
+        return self.metadata()
+
+    def close(self):
+        if self.ds is not None:
+            self.ds.close()
+        self.ds = self.coords = self.path = None
+
+    def metadata(self):
+        if self.ds is None:
+            raise RuntimeError("No dataset is open")
+        lat, lon, time = self.coords["lat"], self.coords["lon"], self.coords["time"]
+
+        variables = []
+        for name, da in self.ds.data_vars.items():
+            if lat in da.dims and lon in da.dims:  # only georeferenced variables
+                variables.append({
+                    "name": str(name),
+                    "long_name": str(da.attrs.get("long_name", name)),
+                    "units": str(da.attrs.get("units", "")),
+                    "dims": [str(d) for d in da.dims],
+                    "shape": [int(s) for s in da.shape],
+                })
+
+        time_info = None
+        if time is not None:
+            tvals = self.ds[time].values
+            time_info = {
+                "start": _iso(tvals[0]),
+                "end": _iso(tvals[-1]),
+                "count": int(tvals.size),
+                # full list lets the UI label its slider; omit when huge
+                "values": [_iso(t) for t in tvals] if tvals.size <= 2000 else None,
+            }
+
+        return {
+            "path": str(self.path),
+            "size_bytes": self.path.stat().st_size,
+            "variables": variables,
+            "time": time_info,
+            "extent": {
+                "south": float(self.ds[lat].min()),
+                "north": float(self.ds[lat].max()),
+                "west": float(self.ds[lon].min()),
+                "east": float(self.ds[lon].max()),
+            },
+        }

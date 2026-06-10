@@ -3,6 +3,8 @@ import pandas as pd
 import pytest
 import xarray as xr
 
+from server.dataset import DatasetManager
+
 
 def _build_dataset(lats, lons, times):
     rng = np.random.default_rng(42)
@@ -54,3 +56,12 @@ def rotated_nc(tmp_path):
     ds.to_netcdf(path)
     ds.close()
     return path
+
+
+@pytest.fixture
+def open_sample(sample_nc):
+    """(ds, coords) for the opened, normalized sample file."""
+    m = DatasetManager()
+    m.open(sample_nc)
+    yield m.ds, m.coords
+    m.close()

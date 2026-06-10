@@ -2,7 +2,7 @@ import numpy as np
 import pytest
 import xarray as xr
 
-from server.dataset import detect_coords, normalize_coords
+from server.dataset import DatasetManager, detect_coords, normalize_coords
 
 
 def test_detect_coords_standard_names(sample_nc):
@@ -152,3 +152,42 @@ def test_normalize_drops_duplicate_cyclic_lon():
     vals = out["lon"].values
     assert vals.size == lons.size - 1   # duplicate dropped
     assert (np.diff(vals) > 0).all()    # strictly ascending
+
+
+def test_manager_open_missing_file_raises():
+    m = DatasetManager()
+    with pytest.raises(FileNotFoundError):
+        m.open("/nope/missing.nc")
+
+
+def test_manager_open_non_netcdf_raises_value_error(tmp_path):
+    bad = tmp_path / "bad.nc"
+    bad.write_text("this is not a netCDF file")
+    m = DatasetManager()
+    with pytest.raises(ValueError):
+        m.open(bad)
+
+
+def test_manager_metadata(sample_nc):
+    m = DatasetManager()
+    meta = m.open(sample_nc)
+    names = [v["name"] for v in meta["variables"]]
+    assert names == ["temperature", "humidity"]
+    assert meta["variables"][0]["units"] == "degC"
+    assert meta["time"]["start"].startswith("2020-01-01")
+    assert meta["time"]["end"].startswith("2020-01-04")
+    assert meta["time"]["count"] == 4
+    assert len(meta["time"]["values"]) == 4
+    assert meta["extent"] == {
+        "south": -85.0, "north": 85.0, "west": -175.0, "east": 175.0,
+    }
+    assert meta["size_bytes"] > 0
+    m.close()
+
+
+def test_manager_open_replaces_previous_file(sample_nc, rotated_nc):
+    m = DatasetManager()
+    m.open(sample_nc)
+    meta = m.open(rotated_nc)
+    assert meta["time"]["count"] == 2
+    m.close()
