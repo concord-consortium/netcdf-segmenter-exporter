@@ -122,3 +122,33 @@ def test_normalize_leaves_wellbehaved_file_alone(sample_nc):
         out = normalize_coords(ds, coords)
         assert (out["lat"].values == ds["lat"].values).all()
         assert (out["lon"].values == ds["lon"].values).all()
+
+
+def test_normalize_sorts_descending_lon_in_standard_convention():
+    ds = xr.Dataset(
+        {"v": (("lat", "lon"), np.arange(6.0).reshape(2, 3))},
+        coords={"lat": [0.0, 10.0], "lon": [20.0, 10.0, 0.0]},
+    )
+    out = normalize_coords(ds, {"lat": "lat", "lon": "lon", "time": None})
+    assert (np.diff(out["lon"].values) > 0).all()
+    # the value follows its coordinate through the sort
+    assert float(out["v"].sel(lat=0.0, lon=20.0)) == 0.0
+
+
+def test_normalize_preserves_lon_attrs_when_wrapping(rotated_nc):
+    with xr.open_dataset(rotated_nc) as ds:
+        coords = detect_coords(ds)
+        out = normalize_coords(ds, coords)
+        assert out["lon"].attrs.get("units") == "degrees_east"
+
+
+def test_normalize_drops_duplicate_cyclic_lon():
+    lons = np.arange(0.0, 361.0, 30.0)  # 13 values: includes both 0 and 360
+    ds = xr.Dataset(
+        {"v": (("lat", "lon"), np.zeros((2, lons.size)))},
+        coords={"lat": [0.0, 10.0], "lon": lons},
+    )
+    out = normalize_coords(ds, {"lat": "lat", "lon": "lon", "time": None})
+    vals = out["lon"].values
+    assert vals.size == lons.size - 1   # duplicate dropped
+    assert (np.diff(vals) > 0).all()    # strictly ascending

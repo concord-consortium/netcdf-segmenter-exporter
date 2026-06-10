@@ -58,7 +58,8 @@ def detect_coords(ds):
 
 
 def normalize_coords(ds, coords):
-    """Return a view of ds with ascending latitude and longitude in [-180, 180].
+    """Return a view of ds with strictly ascending latitude and longitude
+    in [-180, 180].
 
     xarray's sortby/assign_coords operate on the (small) coordinate arrays and
     keep data variables lazy, so this is cheap even for huge files.
@@ -66,8 +67,20 @@ def normalize_coords(ds, coords):
     lat, lon = coords["lat"], coords["lon"]
     if float(ds[lat][0]) > float(ds[lat][-1]):
         ds = ds.sortby(lat)
-    lon_vals = ds[lon].values
+    lon_da = ds[lon]
+    lon_vals = lon_da.values
     if float(lon_vals.max()) > 180.0:
-        ds = ds.assign_coords({lon: ((lon_vals + 180.0) % 360.0) - 180.0})
+        wrapped = ((lon_vals + 180.0) % 360.0) - 180.0
+        # copy(data=...) keeps the original attrs (units: degrees_east)
+        ds = ds.assign_coords({lon: lon_da.copy(data=wrapped)})
+        ds = ds.sortby(lon)
+        # a cyclic wrap column (a grid carrying both lon=0 and lon=360)
+        # becomes a duplicate after wrapping; keep the first occurrence
+        new_vals = ds[lon].values
+        keep = np.ones(new_vals.size, dtype=bool)
+        keep[1:] = new_vals[1:] != new_vals[:-1]
+        if not keep.all():
+            ds = ds.isel({lon: np.flatnonzero(keep)})
+    if float(ds[lon][0]) > float(ds[lon][-1]):
         ds = ds.sortby(lon)
     return ds
