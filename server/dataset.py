@@ -1,5 +1,6 @@
 """Open netCDF files lazily and understand their coordinate layout."""
 
+from datetime import datetime
 from pathlib import Path
 
 import numpy as np
@@ -90,11 +91,17 @@ def normalize_coords(ds, coords):
 
 
 def _iso(value):
-    """Render a time coordinate value as an ISO-8601 string."""
-    try:
+    """Render a time coordinate value as an ISO-8601 string.
+
+    Numeric values (undecoded CF time) pass through as plain strings
+    rather than being misread as nanoseconds-since-epoch.
+    """
+    if isinstance(value, (np.datetime64, datetime)):
         return pd.Timestamp(value).isoformat()
-    except (ValueError, TypeError):
-        return str(value)  # cftime / non-standard calendars
+    iso = getattr(value, "isoformat", None)  # cftime calendars
+    if callable(iso):
+        return iso()
+    return str(value)
 
 
 class DatasetManager:
@@ -116,7 +123,7 @@ class DatasetManager:
         try:
             coords = detect_coords(ds)
             ds = normalize_coords(ds, coords)
-        except ValueError:
+        except Exception:
             ds.close()
             raise
         self.close()

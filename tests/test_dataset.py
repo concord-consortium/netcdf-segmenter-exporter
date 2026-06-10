@@ -191,3 +191,41 @@ def test_manager_open_replaces_previous_file(sample_nc, rotated_nc):
     meta = m.open(rotated_nc)
     assert meta["time"]["count"] == 2
     m.close()
+
+
+def test_iso_numeric_time_values_pass_through():
+    # numeric time (undecodable CF units) must not become 1970-epoch garbage
+    from server.dataset import _iso
+    assert _iso(731.0) == "731.0"
+    assert _iso(0) == "0"
+
+
+def test_manager_failed_open_preserves_previous(sample_nc, tmp_path):
+    bad = tmp_path / "bad.nc"
+    bad.write_text("not netcdf")
+    m = DatasetManager()
+    m.open(sample_nc)
+    with pytest.raises(ValueError):
+        m.open(bad)
+    meta = m.metadata()  # previous dataset still open and queryable
+    assert meta["path"] == str(sample_nc)
+    assert meta["time"]["count"] == 4
+    m.close()
+
+
+def test_metadata_omits_time_values_when_huge(tmp_path):
+    import pandas as pd
+    import xarray as xr
+    times = pd.date_range("2020-01-01", periods=2001, freq="h")
+    ds = xr.Dataset(
+        {"v": (("time", "lat", "lon"), np.zeros((2001, 2, 2)))},
+        coords={"time": times, "lat": [0.0, 1.0], "lon": [0.0, 1.0]},
+    )
+    path = tmp_path / "long.nc"
+    ds.to_netcdf(path)
+    ds.close()
+    m = DatasetManager()
+    meta = m.open(path)
+    assert meta["time"]["count"] == 2001
+    assert meta["time"]["values"] is None
+    m.close()
