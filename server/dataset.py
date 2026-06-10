@@ -3,18 +3,31 @@
 import numpy as np
 import xarray as xr
 
-LAT_NAMES = {"lat", "latitude", "y"}
-LON_NAMES = {"lon", "longitude", "x"}
+LAT_NAMES = {"lat", "latitude"}
+LON_NAMES = {"lon", "longitude"}
 TIME_NAMES = {"time", "t"}
+# CF-convention unit spellings, lowercased
+LAT_UNITS = {"degrees_north", "degree_north", "degrees_n", "degree_n", "degreen", "degreesn"}
+LON_UNITS = {"degrees_east", "degree_east", "degrees_e", "degree_e", "degreee", "degreese"}
 
 
-def _match_coord(ds, names, units_substrings):
-    for name, coord in ds.coords.items():
-        lname = str(name).lower()
-        std = str(coord.attrs.get("standard_name", "")).lower()
-        units = str(coord.attrs.get("units", "")).lower()
-        if lname in names or std in names or any(u in units for u in units_substrings):
-            return str(name)
+def _match_coord(ds, names, std_names, units_set):
+    """Find a 1D coordinate by name, then standard_name, then units.
+
+    Separate passes so a name match anywhere in the dataset beats a
+    units match on an earlier coordinate. Restricting to 1D coordinates
+    keeps curvilinear/projected auxiliary coords (e.g. 2D nav_lat) out.
+    """
+    candidates = [(str(n), c) for n, c in ds.coords.items() if c.ndim == 1]
+    for name, _ in candidates:
+        if name.lower() in names:
+            return name
+    for name, coord in candidates:
+        if str(coord.attrs.get("standard_name", "")).lower() in std_names:
+            return name
+    for name, coord in candidates:
+        if str(coord.attrs.get("units", "")).lower() in units_set:
+            return name
     return None
 
 
@@ -22,12 +35,19 @@ def detect_coords(ds):
     """Return {"lat": name, "lon": name, "time": name-or-None} for a dataset.
 
     Raises ValueError if latitude or longitude cannot be identified.
+    Projected coordinates (e.g. x/y in meters) are deliberately rejected:
+    this app does not reproject, so guessing would put meter values on a
+    degree-based map.
     """
-    lat = _match_coord(ds, LAT_NAMES, ("degrees_north", "degree_north"))
-    lon = _match_coord(ds, LON_NAMES, ("degrees_east", "degree_east"))
+    lat = _match_coord(ds, LAT_NAMES, {"latitude"}, LAT_UNITS)
+    lon = _match_coord(ds, LON_NAMES, {"longitude"}, LON_UNITS)
     time = None
     for name, coord in ds.coords.items():
-        if str(name).lower() in TIME_NAMES or np.issubdtype(coord.dtype, np.datetime64):
+        if (
+            str(name).lower() in TIME_NAMES
+            or str(coord.attrs.get("standard_name", "")).lower() == "time"
+            or np.issubdtype(coord.dtype, np.datetime64)
+        ):
             time = str(name)
             break
     if lat is None or lon is None:

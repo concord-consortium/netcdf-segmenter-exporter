@@ -40,3 +40,56 @@ def test_detect_coords_raises_without_latlon():
     )
     with pytest.raises(ValueError):
         detect_coords(ds)
+
+
+def test_detect_coords_by_standard_name():
+    ds = xr.Dataset(
+        {"v": (("yc", "xc"), np.zeros((2, 2)))},
+        coords={
+            "yc": ("yc", [0.0, 1.0], {"standard_name": "latitude"}),
+            "xc": ("xc", [0.0, 1.0], {"standard_name": "longitude"}),
+        },
+    )
+    assert detect_coords(ds) == {"lat": "yc", "lon": "xc", "time": None}
+
+
+def test_detect_coords_rejects_projected_xy_in_meters():
+    ds = xr.Dataset(
+        {"v": (("y", "x"), np.zeros((2, 2)))},
+        coords={
+            "y": ("y", [0.0, 1000.0], {"units": "m"}),
+            "x": ("x", [0.0, 1000.0], {"units": "m"}),
+        },
+    )
+    with pytest.raises(ValueError):
+        detect_coords(ds)
+
+
+def test_detect_coords_name_match_beats_units_match():
+    # decoy coord with degree units listed first must not shadow the real,
+    # properly named coords
+    ds = xr.Dataset(
+        {"v": (("lat", "lon"), np.zeros((2, 2)))},
+        coords={
+            "decoy": ("lat", [9.0, 9.5], {"units": "degrees_north"}),
+            "lat": ("lat", [0.0, 1.0]),
+            "lon": ("lon", [0.0, 1.0]),
+        },
+    )
+    coords = detect_coords(ds)
+    assert coords["lat"] == "lat"
+    assert coords["lon"] == "lon"
+
+
+def test_detect_coords_time_by_dtype_with_nonstandard_name():
+    ds = xr.Dataset(
+        {"v": (("forecast_time", "lat", "lon"), np.zeros((2, 2, 2)))},
+        coords={
+            "forecast_time": np.array(
+                ["2020-01-01", "2020-01-02"], dtype="datetime64[ns]"
+            ),
+            "lat": [0.0, 1.0],
+            "lon": [0.0, 1.0],
+        },
+    )
+    assert detect_coords(ds)["time"] == "forecast_time"
