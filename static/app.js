@@ -1,0 +1,208 @@
+let metadata = null;
+let overlay = null;
+let drawnShape = null; // {type: "bbox", value: {...}} | {type: "polygon", value: [[lon,lat],...]}
+
+const map = L.map("map").setView([20, 0], 2);
+L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
+  attribution: "&copy; OpenStreetMap contributors",
+  noWrap: true,
+}).addTo(map);
+
+const drawnItems = new L.FeatureGroup().addTo(map);
+map.addControl(new L.Control.Draw({
+  draw: {
+    rectangle: true,
+    polygon: true,
+    polyline: false,
+    circle: false,
+    marker: false,
+    circlemarker: false,
+  },
+  edit: { featureGroup: drawnItems, edit: false, remove: false },
+}));
+
+// wrap any longitude into [-180, 180] (leaflet world-copies can exceed it)
+function wrapLon(lon) {
+  return ((lon + 180) % 360 + 360) % 360 - 180;
+}
+
+map.on(L.Draw.Event.CREATED, (e) => {
+  drawnItems.clearLayers(); // one shape at a time
+  drawnItems.addLayer(e.layer);
+  if (e.layerType === "rectangle") {
+    const b = e.layer.getBounds();
+    drawnShape = { type: "bbox", value: {
+      west: wrapLon(b.getWest()), south: b.getSouth(),
+      east: wrapLon(b.getEast()), north: b.getNorth(),
+    }};
+    setText("shape-info", "Bounding box selected.");
+  } else {
+    // first ring of the GeoJSON polygon, already in [lon, lat] order
+    const ring = e.layer.toGeoJSON().geometry.coordinates[0];
+    drawnShape = { type: "polygon", value: ring.map(([lon, lat]) => [wrapLon(lon), lat]) };
+    setText("shape-info", "Polygon selected.");
+  }
+});
+
+function setText(id, text) {
+  document.getElementById(id).textContent = text;
+}
+
+async function openFile() {
+  const path = document.getElementById("file-path").value.trim();
+  if (!path) return;
+  setText("status", "Opening…");
+  const res = await fetch("/api/open", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ path }),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: res.statusText }));
+    setText("status", `Error: ${err.detail}`);
+    return;
+  }
+  metadata = await res.json();
+  setText("status", "");
+  applyMetadata();
+  await refreshOverlay();
+}
+
+function applyMetadata() {
+  const sizeMb = (metadata.size_bytes / 1048576).toFixed(1);
+  setText("file-info", `${metadata.path} (${sizeMb} MB)`);
+
+  const varSel = document.getElementById("variable-select");
+  const filterSel = document.getElementById("filter-variable");
+  varSel.innerHTML = "";
+  filterSel.innerHTML = '<option value="">(none)</option>';
+  for (const v of metadata.variables) {
+    const label = v.units ? `${v.name} (${v.units})` : v.name;
+    varSel.add(new Option(label, v.name));
+    filterSel.add(new Option(label, v.name));
+  }
+
+  const slider = document.getElementById("time-slider");
+  const count = metadata.time ? metadata.time.count : 1;
+  slider.max = String(Math.max(0, count - 1));
+  slider.value = "0";
+  updateTimeLabel();
+
+  if (metadata.time) {
+    document.getElementById("time-start").value = metadata.time.start;
+    document.getElementById("time-end").value = metadata.time.end;
+  } else {
+    document.getElementById("time-start").value = "";
+    document.getElementById("time-end").value = "";
+  }
+
+  const ext = metadata.extent;
+  map.fitBounds([[ext.south, ext.west], [ext.north, ext.east]]);
+}
+
+function updateTimeLabel() {
+  const idx = Number(document.getElementById("time-slider").value);
+  if (metadata && metadata.time && metadata.time.values) {
+    setText("time-label", metadata.time.values[idx]);
+  } else if (metadata && metadata.time) {
+    setText("time-label", `index ${idx} of ${metadata.time.count - 1}`);
+  } else {
+    setText("time-label", "(no time axis)");
+  }
+}
+
+async function refreshOverlay() {
+  if (!metadata) return;
+  const variable = document.getElementById("variable-select").value;
+  if (!variable) return;
+  const idx = document.getElementById("time-slider").value;
+  const res = await fetch(
+    `/api/slice?variable=${encodeURIComponent(variable)}&time_index=${idx}`
+  );
+  if (!res.ok) {
+    setText("status", "Failed to render slice.");
+    return;
+  }
+  setText("legend-min", Number(res.headers.get("X-Vmin")).toPrecision(4));
+  setText("legend-max", Number(res.headers.get("X-Vmax")).toPrecision(4));
+  const blob = await res.blob();
+  const url = URL.createObjectURL(blob);
+  const ext = metadata.extent;
+  const bounds = [[ext.south, ext.west], [ext.north, ext.east]];
+  if (overlay) {
+    const oldUrl = overlay._url;
+    overlay.setUrl(url);
+    overlay.setBounds(L.latLngBounds(bounds));
+    if (oldUrl && oldUrl.startsWith("blob:")) URL.revokeObjectURL(oldUrl);
+  } else {
+    overlay = L.imageOverlay(url, bounds, {
+      opacity: 0.75,
+      className: "data-overlay", // crisp cells for coarse grids (style.css)
+    }).addTo(map);
+  }
+}
+
+function buildFilters() {
+  const filters = {};
+  if (drawnShape && drawnShape.type === "bbox") filters.bbox = drawnShape.value;
+  if (drawnShape && drawnShape.type === "polygon") filters.polygon = drawnShape.value;
+
+  const start = document.getElementById("time-start").value.trim();
+  const end = document.getElementById("time-end").value.trim();
+  if (start || end) filters.time_range = { start: start || null, end: end || null };
+
+  const fvar = document.getElementById("filter-variable").value;
+  if (fvar) {
+    const min = document.getElementById("filter-min").value;
+    const max = document.getElementById("filter-max").value;
+    filters.var_filter = {
+      variable: fvar,
+      min: min === "" ? null : Number(min),
+      max: max === "" ? null : Number(max),
+    };
+  }
+  return filters;
+}
+
+async function exportSubset(format) {
+  if (!metadata) {
+    setText("status", "Open a file first.");
+    return;
+  }
+  setText("status", "Preparing export…");
+  const res = await fetch("/api/export", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ format, ...buildFilters() }),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: res.statusText }));
+    const detail = typeof err.detail === "string" ? err.detail : JSON.stringify(err.detail);
+    setText("status", `Export failed: ${detail}`);
+    return;
+  }
+  const blob = await res.blob();
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  const cd = res.headers.get("Content-Disposition") || "";
+  const match = cd.match(/filename="(.+)"/);
+  a.download = match ? match[1] : (format === "csv" ? "subset.csv" : "subset.nc");
+  a.click();
+  URL.revokeObjectURL(a.href);
+  setText("status", "Export downloaded.");
+}
+
+document.getElementById("open-btn").addEventListener("click", openFile);
+document.getElementById("file-path").addEventListener("keydown", (e) => {
+  if (e.key === "Enter") openFile();
+});
+document.getElementById("variable-select").addEventListener("change", refreshOverlay);
+document.getElementById("time-slider").addEventListener("input", updateTimeLabel);
+document.getElementById("time-slider").addEventListener("change", refreshOverlay);
+document.getElementById("clear-shape-btn").addEventListener("click", () => {
+  drawnItems.clearLayers();
+  drawnShape = null;
+  setText("shape-info", "No shape drawn (whole globe).");
+});
+document.getElementById("export-csv-btn").addEventListener("click", () => exportSubset("csv"));
+document.getElementById("export-nc-btn").addEventListener("click", () => exportSubset("netcdf"));
