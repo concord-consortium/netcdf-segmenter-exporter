@@ -28,6 +28,16 @@
       <label>Time step — <span id="time-label"></span>
         <input id="time-slider" type="range" min="0" max="0" value="0">
       </label>
+      <div id="time-controls">
+        <button id="step-back-btn" type="button" aria-label="Back one time step">&#9664;</button>
+        <button id="play-btn" type="button" aria-label="Play">&#9654; Play</button>
+        <button id="step-fwd-btn" type="button" aria-label="Forward one time step">&#9654;</button>
+        <select id="speed-select" aria-label="Playback speed">
+          <option value="1">Slow</option>
+          <option value="4" selected>Normal</option>
+          <option value="10">Fast</option>
+        </select>
+      </div>
       <div id="legend">
         <div id="legend-gradient"></div>
         <div id="legend-labels">

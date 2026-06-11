@@ -34,3 +34,9 @@ button { margin-top: 8px; padding: 6px 12px; cursor: pointer; }
 .data-overlay {
   image-rendering: pixelated;
 }
+#time-controls {
+  display: flex; gap: 6px; align-items: center; margin-top: 4px;
+}
+#time-controls button { margin-top: 0; padding: 4px 10px; }
+#time-controls #play-btn { flex: 1; white-space: nowrap; }
+#time-controls select { width: auto; flex: 0 0 auto; padding: 4px; }
