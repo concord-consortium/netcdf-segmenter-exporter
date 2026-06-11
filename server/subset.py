@@ -35,7 +35,22 @@ def apply_filters(ds, coords, bbox=None, polygon=None, time_range=None, var_filt
 
 
 def _apply_polygon(out, lat, lon, polygon):
-    raise NotImplementedError  # implemented in the next task (TDD)
+    pts = np.asarray(polygon, dtype=float)  # rows of [lon, lat]
+    # crop to the polygon's bounding box first, then mask cells outside the ring
+    out = out.sel({
+        lat: slice(float(pts[:, 1].min()), float(pts[:, 1].max())),
+        lon: slice(float(pts[:, 0].min()), float(pts[:, 0].max())),
+    })
+    lon2d, lat2d = np.meshgrid(out[lon].values, out[lat].values)
+    inside = MplPath(pts).contains_points(
+        np.column_stack([lon2d.ravel(), lat2d.ravel()])
+    )
+    mask = xr.DataArray(
+        inside.reshape(lat2d.shape),
+        dims=(lat, lon),
+        coords={lat: out[lat], lon: out[lon]},
+    )
+    return out.where(mask)
 
 
 def _apply_var_filter(out, var_filter):

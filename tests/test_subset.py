@@ -35,3 +35,32 @@ def test_no_filters_returns_full_dataset(open_sample):
     ds, coords = open_sample
     out = apply_filters(ds, coords)
     assert out.sizes == ds.sizes
+
+
+def test_polygon_filter_crops_and_masks(open_sample):
+    ds, coords = open_sample
+    # triangle: base from (-60,-30) to (60,-30), apex at (0,60); [lon, lat] order
+    polygon = [[-60.0, -30.0], [60.0, -30.0], [0.0, 60.0], [-60.0, -30.0]]
+    out = apply_filters(ds, coords, polygon=polygon)
+
+    # cropped to the triangle's bounding box
+    assert float(out["lat"].min()) >= -30.0
+    assert float(out["lat"].max()) <= 60.0
+    assert float(out["lon"].min()) >= -60.0
+    assert float(out["lon"].max()) <= 60.0
+
+    # (lon=5, lat=5) is inside the triangle; (lon=-55, lat=55) is in the
+    # bounding box but outside the triangle, so it must be masked
+    inside = out["temperature"].isel(time=0).sel(lat=5.0, lon=5.0)
+    outside = out["temperature"].isel(time=0).sel(lat=55.0, lon=-55.0)
+    assert not np.isnan(float(inside))
+    assert np.isnan(float(outside))
+
+
+def test_polygon_mask_applies_to_all_variables(open_sample):
+    ds, coords = open_sample
+    polygon = [[-60.0, -30.0], [60.0, -30.0], [0.0, 60.0], [-60.0, -30.0]]
+    out = apply_filters(ds, coords, polygon=polygon)
+    t_nan = np.isnan(out["temperature"].values)
+    h_nan = np.isnan(out["humidity"].values)
+    assert np.array_equal(t_nan, h_nan)
