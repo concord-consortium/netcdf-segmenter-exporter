@@ -1,10 +1,11 @@
 """HTTP API and static frontend for the netCDF segmenter."""
 
 import hashlib
+import json
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import Response
+from fastapi.responses import Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
@@ -114,6 +115,34 @@ async def browse(path: str | None = None):
                 "Security → Files & Folders, or browse elsewhere."
             ),
         )
+
+
+@app.get("/api/value-range")
+async def value_range_stream(variable: str):
+    """Stream range-scan progress as NDJSON, ending with the cached range.
+
+    Progress can't come from a separately polled endpoint: handlers are
+    serialized on the event loop, so a poll would be starved while the scan
+    runs. It travels on this response instead, flushing one line per chunk.
+    """
+    _require_open()
+    if variable not in manager.ds.data_vars:
+        raise HTTPException(status_code=404, detail=f"Unknown variable: {variable}")
+
+    async def stream():
+        try:
+            for done, total in manager.iter_value_range(variable):
+                yield json.dumps({"done": done, "total": total}) + "\n"
+            vmin, vmax = manager.value_range(variable)
+            yield json.dumps({"vmin": vmin, "vmax": vmax}) + "\n"
+        except Exception as exc:  # e.g. file replaced/removed between chunks
+            yield json.dumps({"error": str(exc)}) + "\n"
+
+    return StreamingResponse(
+        stream(),
+        media_type="application/x-ndjson",
+        headers={"Cache-Control": "no-store"},
+    )
 
 
 def _slice_etag(variable, time_index):

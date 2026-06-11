@@ -1,4 +1,5 @@
 import io
+import json
 from pathlib import Path
 
 import pandas as pd
@@ -269,3 +270,36 @@ def test_slice_value_range_fixed_across_time(opened):
     lo, hi = float(h0["x-vmin"]), float(h0["x-vmax"])
     assert 15.0 <= lo < 16.0
     assert 24.0 < hi < 25.0
+
+
+def test_value_range_stream_progress_then_result(opened):
+    res = opened.get("/api/value-range", params={"variable": "temperature"})
+    assert res.status_code == 200
+    lines = [json.loads(l) for l in res.text.strip().splitlines()]
+    assert len(lines) >= 2  # at least one progress line, then the final line
+    final = lines[-1]
+    assert "vmin" in final and "vmax" in final
+    dones = [s["done"] for s in lines[:-1]]
+    for step in lines[:-1]:
+        assert 1 <= step["done"] <= step["total"]
+    assert dones == sorted(dones)
+    # second request: range is cached -> only the final line
+    res2 = opened.get("/api/value-range", params={"variable": "temperature"})
+    lines2 = [json.loads(l) for l in res2.text.strip().splitlines()]
+    assert len(lines2) == 1
+    assert lines2[0] == final
+
+
+def test_value_range_stream_unknown_variable_404(opened):
+    res = opened.get("/api/value-range", params={"variable": "nope"})
+    assert res.status_code == 404
+
+
+def test_value_range_stream_requires_open_file(client):
+    res = client.get("/api/value-range", params={"variable": "temperature"})
+    assert res.status_code == 409
+
+
+def test_value_range_stream_no_store_header(opened):
+    res = opened.get("/api/value-range", params={"variable": "humidity"})
+    assert res.headers["cache-control"] == "no-store"
