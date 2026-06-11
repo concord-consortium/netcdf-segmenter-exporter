@@ -34,6 +34,22 @@ def apply_filters(ds, coords, bbox=None, polygon=None, time_range=None, var_filt
     return out
 
 
+def _mask_dataset(out, cond):
+    """Apply .where(cond) only to variables whose dims can hold the mask.
+
+    Dataset.where would broadcast the mask onto non-conforming variables —
+    inflating CF bounds variables like time_bnds(time, nv) by lat*lon and
+    giving static (lat, lon) variables a time dimension. Those variables
+    pass through untouched instead.
+    """
+    masked = {
+        name: da.where(cond)
+        for name, da in out.data_vars.items()
+        if set(cond.dims) <= set(da.dims)
+    }
+    return out.assign(masked)
+
+
 def _apply_polygon(out, lat, lon, polygon):
     pts = np.asarray(polygon, dtype=float)  # rows of [lon, lat]
     # crop to the polygon's bounding box first, then mask cells outside the ring
@@ -50,17 +66,19 @@ def _apply_polygon(out, lat, lon, polygon):
         dims=(lat, lon),
         coords={lat: out[lat], lon: out[lon]},
     )
-    return out.where(mask)
+    return _mask_dataset(out, mask)
 
 
 def _apply_var_filter(out, var_filter):
     name = var_filter["variable"]
     if name not in out.data_vars:
         raise ValueError(f"Unknown filter variable: {name}")
+    if var_filter.get("min") is None and var_filter.get("max") is None:
+        return out
     da = out[name]
     cond = xr.ones_like(da, dtype=bool)
     if var_filter.get("min") is not None:
         cond = cond & (da >= var_filter["min"])
     if var_filter.get("max") is not None:
         cond = cond & (da <= var_filter["max"])
-    return out.where(cond)
+    return _mask_dataset(out, cond)

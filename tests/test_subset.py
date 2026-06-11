@@ -1,5 +1,7 @@
 import numpy as np
+import pandas as pd
 import pytest
+import xarray as xr
 
 from server.subset import apply_filters
 
@@ -103,3 +105,54 @@ def test_filters_compose(open_sample):
     )
     assert out.sizes == {"time": 2, "lat": 5, "lon": 5}
     assert np.nanmin(out["temperature"].values) >= 20.0
+
+
+def _mixed_dataset():
+    """A realistic mix: a (time,lat,lon) variable, a static (lat,lon) variable,
+    and a CF bounds variable with no spatial dims at all."""
+    times = pd.date_range("2020-01-01", periods=3, freq="D")
+    lats = [-10.0, 0.0, 10.0, 20.0]
+    lons = [-10.0, 0.0, 10.0, 20.0]
+    return xr.Dataset(
+        {
+            "temperature": (("time", "lat", "lon"), np.arange(48.0).reshape(3, 4, 4)),
+            "elevation": (("lat", "lon"), np.arange(16.0).reshape(4, 4)),
+            "time_bnds": (("time", "nv"), np.arange(6.0).reshape(3, 2)),
+        },
+        coords={"time": times, "lat": ("lat", lats), "lon": ("lon", lons)},
+    )
+
+
+def test_polygon_mask_does_not_broadcast_nonspatial_variables():
+    ds = _mixed_dataset()
+    coords = {"lat": "lat", "lon": "lon", "time": "time"}
+    polygon = [[-5.0, -5.0], [15.0, -5.0], [5.0, 15.0], [-5.0, -5.0]]
+    out = apply_filters(ds, coords, polygon=polygon)
+    assert out["time_bnds"].dims == ("time", "nv")        # untouched
+    assert out["elevation"].dims == ("lat", "lon")        # masked, not time-broadcast
+    assert np.isnan(out["elevation"].values).any()        # spatial mask DID apply
+    assert not np.isnan(out["time_bnds"].values).any()
+
+
+def test_var_filter_does_not_broadcast_nonconforming_variables():
+    ds = _mixed_dataset()
+    coords = {"lat": "lat", "lon": "lon", "time": "time"}
+    out = apply_filters(
+        ds, coords, var_filter={"variable": "temperature", "min": 24.0, "max": None}
+    )
+    assert out["time_bnds"].dims == ("time", "nv")
+    # elevation lacks the time dim of the condition: left untouched rather
+    # than silently gaining a time dimension
+    assert out["elevation"].dims == ("lat", "lon")
+    assert not np.isnan(out["elevation"].values).any()
+    assert np.isnan(out["temperature"].values).any()
+    assert np.nanmin(out["temperature"].values) >= 24.0
+
+
+def test_var_filter_without_bounds_is_noop(open_sample):
+    ds, coords = open_sample
+    out = apply_filters(
+        ds, coords, var_filter={"variable": "temperature", "min": None, "max": None}
+    )
+    assert not np.isnan(out["temperature"].values).any()
+    assert out.sizes == ds.sizes
