@@ -1,11 +1,13 @@
 let metadata = null;
 let overlay = null;
 let drawnShape = null; // {type: "bbox", value: {...}} | {type: "polygon", value: [[lon,lat],...]}
+let overlayRequestSeq = 0;
 
 const map = L.map("map").setView([20, 0], 2);
 L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
   attribution: "&copy; OpenStreetMap contributors",
   noWrap: true,
+  bounds: [[-90, -180], [90, 180]],
 }).addTo(map);
 
 const drawnItems = new L.FeatureGroup().addTo(map);
@@ -31,15 +33,31 @@ map.on(L.Draw.Event.CREATED, (e) => {
   drawnItems.addLayer(e.layer);
   if (e.layerType === "rectangle") {
     const b = e.layer.getBounds();
-    drawnShape = { type: "bbox", value: {
+    const value = {
       west: wrapLon(b.getWest()), south: b.getSouth(),
       east: wrapLon(b.getEast()), north: b.getNorth(),
-    }};
+    };
+    if (value.east <= value.west) {
+      drawnItems.clearLayers();
+      drawnShape = null;
+      setText("shape-info",
+        "Shapes crossing the antimeridian aren't supported — draw within one world copy.");
+      return;
+    }
+    drawnShape = { type: "bbox", value };
     setText("shape-info", "Bounding box selected.");
   } else {
-    // first ring of the GeoJSON polygon, already in [lon, lat] order
-    const ring = e.layer.toGeoJSON().geometry.coordinates[0];
-    drawnShape = { type: "polygon", value: ring.map(([lon, lat]) => [wrapLon(lon), lat]) };
+    const ring = e.layer.toGeoJSON().geometry.coordinates[0]
+      .map(([lon, lat]) => [wrapLon(lon), lat]);
+    const lons = ring.map((p) => p[0]);
+    if (Math.max(...lons) - Math.min(...lons) > 180) {
+      drawnItems.clearLayers();
+      drawnShape = null;
+      setText("shape-info",
+        "Shapes crossing the antimeridian aren't supported — draw within one world copy.");
+      return;
+    }
+    drawnShape = { type: "polygon", value: ring };
     setText("shape-info", "Polygon selected.");
   }
 });
@@ -51,21 +69,25 @@ function setText(id, text) {
 async function openFile() {
   const path = document.getElementById("file-path").value.trim();
   if (!path) return;
-  setText("status", "Opening…");
-  const res = await fetch("/api/open", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ path }),
-  });
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({ detail: res.statusText }));
-    setText("status", `Error: ${err.detail}`);
-    return;
+  try {
+    setText("status", "Opening…");
+    const res = await fetch("/api/open", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ path }),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ detail: res.statusText }));
+      setText("status", `Error: ${err.detail}`);
+      return;
+    }
+    metadata = await res.json();
+    setText("status", "");
+    applyMetadata();
+    await refreshOverlay();
+  } catch (err) {
+    setText("status", `Request failed: ${err.message}`);
   }
-  metadata = await res.json();
-  setText("status", "");
-  applyMetadata();
-  await refreshOverlay();
 }
 
 function applyMetadata() {
@@ -96,7 +118,7 @@ function applyMetadata() {
     document.getElementById("time-end").value = "";
   }
 
-  const ext = metadata.extent;
+  const ext = metadata.edges;
   map.fitBounds([[ext.south, ext.west], [ext.north, ext.east]]);
 }
 
@@ -116,29 +138,36 @@ async function refreshOverlay() {
   const variable = document.getElementById("variable-select").value;
   if (!variable) return;
   const idx = document.getElementById("time-slider").value;
-  const res = await fetch(
-    `/api/slice?variable=${encodeURIComponent(variable)}&time_index=${idx}`
-  );
-  if (!res.ok) {
+  const seq = ++overlayRequestSeq;
+  try {
+    const res = await fetch(
+      `/api/slice?variable=${encodeURIComponent(variable)}&time_index=${idx}`
+    );
+    if (seq !== overlayRequestSeq) return;
+    if (!res.ok) {
+      setText("status", "Failed to render slice.");
+      return;
+    }
+    setText("legend-min", Number(res.headers.get("X-Vmin")).toPrecision(4));
+    setText("legend-max", Number(res.headers.get("X-Vmax")).toPrecision(4));
+    const blob = await res.blob();
+    if (seq !== overlayRequestSeq) return;
+    const url = URL.createObjectURL(blob);
+    const ext = metadata.edges;
+    const bounds = [[ext.south, ext.west], [ext.north, ext.east]];
+    if (overlay) {
+      const oldUrl = overlay._url;
+      overlay.setUrl(url);
+      overlay.setBounds(L.latLngBounds(bounds));
+      if (oldUrl && oldUrl.startsWith("blob:")) URL.revokeObjectURL(oldUrl);
+    } else {
+      overlay = L.imageOverlay(url, bounds, {
+        opacity: 0.75,
+        className: "data-overlay", // crisp cells for coarse grids (style.css)
+      }).addTo(map);
+    }
+  } catch (err) {
     setText("status", "Failed to render slice.");
-    return;
-  }
-  setText("legend-min", Number(res.headers.get("X-Vmin")).toPrecision(4));
-  setText("legend-max", Number(res.headers.get("X-Vmax")).toPrecision(4));
-  const blob = await res.blob();
-  const url = URL.createObjectURL(blob);
-  const ext = metadata.extent;
-  const bounds = [[ext.south, ext.west], [ext.north, ext.east]];
-  if (overlay) {
-    const oldUrl = overlay._url;
-    overlay.setUrl(url);
-    overlay.setBounds(L.latLngBounds(bounds));
-    if (oldUrl && oldUrl.startsWith("blob:")) URL.revokeObjectURL(oldUrl);
-  } else {
-    overlay = L.imageOverlay(url, bounds, {
-      opacity: 0.75,
-      className: "data-overlay", // crisp cells for coarse grids (style.css)
-    }).addTo(map);
   }
 }
 
@@ -170,26 +199,30 @@ async function exportSubset(format) {
     return;
   }
   setText("status", "Preparing export…");
-  const res = await fetch("/api/export", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ format, ...buildFilters() }),
-  });
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({ detail: res.statusText }));
-    const detail = typeof err.detail === "string" ? err.detail : JSON.stringify(err.detail);
-    setText("status", `Export failed: ${detail}`);
-    return;
+  try {
+    const res = await fetch("/api/export", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ format, ...buildFilters() }),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ detail: res.statusText }));
+      const detail = typeof err.detail === "string" ? err.detail : JSON.stringify(err.detail);
+      setText("status", `Export failed: ${detail}`);
+      return;
+    }
+    const blob = await res.blob();
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    const cd = res.headers.get("Content-Disposition") || "";
+    const match = cd.match(/filename="(.+)"/);
+    a.download = match ? match[1] : (format === "csv" ? "subset.csv" : "subset.nc");
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+    setText("status", "Export downloaded.");
+  } catch (err) {
+    setText("status", `Request failed: ${err.message}`);
   }
-  const blob = await res.blob();
-  const a = document.createElement("a");
-  a.href = URL.createObjectURL(blob);
-  const cd = res.headers.get("Content-Disposition") || "";
-  const match = cd.match(/filename="(.+)"/);
-  a.download = match ? match[1] : (format === "csv" ? "subset.csv" : "subset.nc");
-  a.click();
-  URL.revokeObjectURL(a.href);
-  setText("status", "Export downloaded.");
 }
 
 document.getElementById("open-btn").addEventListener("click", openFile);

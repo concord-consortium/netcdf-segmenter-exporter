@@ -229,3 +229,34 @@ def test_metadata_omits_time_values_when_huge(tmp_path):
     assert meta["time"]["count"] == 2001
     assert meta["time"]["values"] is None
     m.close()
+
+
+def test_metadata_includes_cell_edge_bounds(sample_nc):
+    # extent is cell centers; edges pads by half a cell for image overlay
+    m = DatasetManager()
+    meta = m.open(sample_nc)
+    assert meta["edges"] == {
+        "south": -90.0, "north": 90.0, "west": -180.0, "east": 180.0,
+    }
+    m.close()
+
+
+def test_metadata_edges_clamped_to_globe(tmp_path):
+    # near-pole centers must not produce edges beyond +/-90 / +/-180
+    import pandas as pd
+    ds = xr.Dataset(
+        {"v": (("time", "lat", "lon"), np.zeros((1, 3, 3)))},
+        coords={
+            "time": pd.date_range("2020-01-01", periods=1),
+            "lat": [-89.0, 0.0, 89.0],
+            "lon": [-179.0, 0.0, 179.0],
+        },
+    )
+    path = tmp_path / "poles.nc"
+    ds.to_netcdf(path)
+    ds.close()
+    m = DatasetManager()
+    meta = m.open(path)
+    assert meta["edges"]["south"] == -90.0 and meta["edges"]["north"] == 90.0
+    assert meta["edges"]["west"] == -180.0 and meta["edges"]["east"] == 180.0
+    m.close()

@@ -104,6 +104,18 @@ def _iso(value):
     return str(value)
 
 
+def _cell_edges(vals, vmin_limit, vmax_limit):
+    """Extend cell-center coordinates outward by half a cell, clamped.
+
+    Image overlays need cell EDGES; using centers shrinks the image by half
+    a cell per side. Single-point axes get no padding (spacing unknown)."""
+    lo, hi = float(vals[0]), float(vals[-1])
+    if vals.size > 1:
+        lo -= abs(float(vals[1]) - float(vals[0])) / 2.0
+        hi += abs(float(vals[-1]) - float(vals[-2])) / 2.0
+    return max(lo, vmin_limit), min(hi, vmax_limit)
+
+
 class DatasetManager:
     """Holds the single currently-open dataset, lazily loaded."""
 
@@ -162,6 +174,11 @@ class DatasetManager:
                 "values": [_iso(t) for t in tvals] if tvals.size <= 2000 else None,
             }
 
+        lat_vals = self.ds[lat].values
+        lon_vals = self.ds[lon].values
+        south, north = _cell_edges(lat_vals, -90.0, 90.0)
+        west, east = _cell_edges(lon_vals, -180.0, 180.0)
+
         return {
             "path": str(self.path),
             "size_bytes": self.path.stat().st_size,
@@ -173,4 +190,5 @@ class DatasetManager:
                 "west": float(self.ds[lon].min()),
                 "east": float(self.ds[lon].max()),
             },
+            "edges": {"south": south, "north": north, "west": west, "east": east},
         }
