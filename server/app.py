@@ -10,7 +10,7 @@ from pydantic import BaseModel, Field
 
 from .dataset import DatasetManager
 from .export import to_csv_bytes, to_netcdf_bytes
-from .rendering import render_slice_png
+from .rendering import RENDER_VERSION, render_slice_png
 from .subset import apply_filters
 
 # CSV materializes one row per grid cell; past ~25M rows the in-memory
@@ -103,7 +103,10 @@ def _slice_etag(variable, time_index):
             status_code=409,
             detail="The open file no longer exists on disk; open a file again.",
         )
-    key = f"{manager.path}:{st.st_mtime_ns}:{st.st_size}:{variable}:{time_index}"
+    key = (
+        f"{manager.path}:{st.st_mtime_ns}:{st.st_size}:"
+        f"{RENDER_VERSION}:{variable}:{time_index}"
+    )
     return '"' + hashlib.sha1(key.encode()).hexdigest() + '"'
 
 

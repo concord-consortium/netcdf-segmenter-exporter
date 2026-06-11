@@ -8,6 +8,10 @@ from matplotlib import image as mpimage
 
 from .dataset import _cell_edges
 
+# Bump whenever rendered output changes (projection, colormap, masking):
+# the slice ETag includes it so browsers drop stale cached renderings.
+RENDER_VERSION = 2
+
 # Web-Mercator display limit; Leaflet clamps overlay corners here too,
 # so image rows and overlay bounds stay consistent for polar grids.
 MAX_MERCATOR_LAT = 85.05112878

@@ -197,3 +197,18 @@ def test_open_unreadable_file_returns_403(client, sample_nc, tmp_path):
         assert "permission" in res.json()["detail"].lower()
     finally:
         locked.chmod(0o644)
+
+
+def test_slice_etag_changes_with_renderer_version(opened, monkeypatch):
+    import server.app as app_module
+
+    params = {"variable": "temperature", "time_index": 0}
+    etag_before = opened.get("/api/slice", params=params).headers["etag"]
+    monkeypatch.setattr(app_module, "RENDER_VERSION", "test-bump")
+    etag_after = opened.get("/api/slice", params=params).headers["etag"]
+    assert etag_after != etag_before
+    # a stale etag from the old renderer must NOT revalidate to 304
+    res = opened.get(
+        "/api/slice", params=params, headers={"If-None-Match": etag_before}
+    )
+    assert res.status_code == 200
