@@ -81,7 +81,15 @@
       <p id="status" class="muted"></p>
     </section>
   </aside>
-  <div id="map"></div>
+  <div id="map">
+    <div id="map-loading" hidden>
+      <div id="map-loading-card">
+        <span id="map-loading-text">Loading&#8230;</span>
+        <progress id="map-loading-bar" max="1" value="0"></progress>
+        <span id="map-loading-pct"></span>
+      </div>
+    </div>
+  </div>
 
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script src="https://unpkg.com/leaflet-draw@1.0.4/dist/leaflet.draw.js"></script>

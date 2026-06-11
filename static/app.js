@@ -136,6 +136,56 @@ function updateTimeLabel() {
   }
 }
 
+function showMapLoading(done, total) {
+  const bar = document.getElementById("map-loading-bar");
+  bar.max = total;
+  bar.value = done;
+  setText("map-loading-pct", `${Math.round((done / total) * 100)}%`);
+  document.getElementById("map-loading").hidden = false;
+}
+
+function hideMapLoading() {
+  document.getElementById("map-loading").hidden = true;
+}
+
+async function ensureValueRange(variable, seq) {
+  // Pump the NDJSON progress stream; show the bar only once a progress
+  // line actually arrives (cached ranges emit just the final line).
+  const res = await fetch(
+    `/api/value-range?variable=${encodeURIComponent(variable)}`
+  );
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: res.statusText }));
+    setText("status", `Failed to compute value range: ${err.detail}`);
+    return false;
+  }
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buf = "";
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buf += decoder.decode(value, { stream: true });
+    let nl;
+    while ((nl = buf.indexOf("\n")) >= 0) {
+      const line = buf.slice(0, nl).trim();
+      buf = buf.slice(nl + 1);
+      if (!line) continue;
+      if (seq !== overlayRequestSeq) {
+        reader.cancel();
+        return false; // a newer request took over
+      }
+      const msg = JSON.parse(line);
+      if (msg.error) {
+        setText("status", `Failed to compute value range: ${msg.error}`);
+        return false;
+      }
+      if (msg.total) showMapLoading(msg.done, msg.total);
+    }
+  }
+  return true;
+}
+
 let playing = false;
 let playToken = 0;
 
@@ -213,6 +263,10 @@ async function refreshOverlay() {
   const idx = document.getElementById("time-slider").value;
   const seq = ++overlayRequestSeq;
   try {
+    if (!(await ensureValueRange(variable, seq))) {
+      // stale (superseded) is not a failure; genuine errors are
+      return seq !== overlayRequestSeq;
+    }
     const res = await fetch(
       `/api/slice?variable=${encodeURIComponent(variable)}&time_index=${idx}`
     );
@@ -243,6 +297,8 @@ async function refreshOverlay() {
   } catch (err) {
     setText("status", "Failed to render slice.");
     return false;
+  } finally {
+    if (seq === overlayRequestSeq) hideMapLoading();
   }
 }
 
