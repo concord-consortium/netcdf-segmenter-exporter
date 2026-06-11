@@ -90,3 +90,34 @@ def test_render_survives_polar_edge_grids():
     coords = {"lat": "lat", "lon": "lon", "time": None}
     png, _, _ = render_slice_png(ds, coords, "v")
     assert png[:8] == PNG_MAGIC
+
+
+def test_render_with_explicit_range_scales_and_clips():
+    import io
+
+    from matplotlib import image as mpimage
+
+    ds = xr.Dataset(
+        {"v": (("lat", "lon"), np.array([[0.0, 5.0], [10.0, 20.0]]))},
+        coords={"lat": [0.0, 1.0], "lon": [0.0, 1.0]},
+    )
+    coords = {"lat": "lat", "lon": "lon", "time": None}
+    png, vmin, vmax = render_slice_png(ds, coords, "v", vmin=0.0, vmax=10.0)
+    assert (vmin, vmax) == (0.0, 10.0)  # echoes the explicit scale
+    rgba = mpimage.imread(io.BytesIO(png))
+    top_left = rgba[0, 0, :3]       # lat=1 row: value 10.0 == vmax
+    top_right = rgba[0, 1, :3]      # value 20.0 must CLIP to the same color
+    bottom_right = rgba[-1, 1, :3]  # lat=0 row: value 5.0 -> mid-scale
+    np.testing.assert_allclose(top_left, top_right, atol=0.01)
+    assert top_left[0] > 0.9 and top_left[1] > 0.85   # viridis top = yellow
+    assert abs(float(bottom_right[0]) - float(top_left[0])) > 0.2  # mid != top
+
+
+def test_render_partial_explicit_range_falls_back_to_slice():
+    ds = xr.Dataset(
+        {"v": (("lat", "lon"), np.array([[1.0, 2.0], [3.0, 4.0]]))},
+        coords={"lat": [0.0, 1.0], "lon": [0.0, 1.0]},
+    )
+    coords = {"lat": "lat", "lon": "lon", "time": None}
+    _, vmin, vmax = render_slice_png(ds, coords, "v", vmin=0.0)  # vmax omitted
+    assert (vmin, vmax) == (1.0, 4.0)  # half-specified ranges are ignored

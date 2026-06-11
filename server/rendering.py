@@ -10,7 +10,7 @@ from .dataset import _cell_edges
 
 # Bump whenever rendered output changes (projection, colormap, masking):
 # the slice ETag includes it so browsers drop stale cached renderings.
-RENDER_VERSION = 2
+RENDER_VERSION = 3
 
 # Web-Mercator display limit; Leaflet clamps overlay corners here too,
 # so image rows and overlay bounds stay consistent for polar grids.
@@ -52,7 +52,8 @@ def _resample_rows_for_mercator(data, lat_vals):
     return data[idx, :]
 
 
-def render_slice_png(ds, coords, variable, time_index=0, cmap="viridis"):
+def render_slice_png(ds, coords, variable, time_index=0, cmap="viridis",
+                     vmin=None, vmax=None):
     """Return (png_bytes, vmin, vmax) for variable at time_index.
 
     Only the requested slice is read from disk (xarray lazy indexing).
@@ -61,6 +62,9 @@ def render_slice_png(ds, coords, variable, time_index=0, cmap="viridis"):
     ds must have ascending latitude (as produced by normalize_coords); descending input would render vertically flipped.
     Image rows are resampled to be equally spaced in Web-Mercator y so that
     Leaflet's linear imageOverlay stretch places every row at its true latitude.
+    When both vmin and vmax are given they define the color scale (values outside
+    clip to the end colors); when either is None the scale is computed from this
+    slice alone.
     """
     da = ds[variable]
     tname = coords.get("time")
@@ -75,12 +79,13 @@ def render_slice_png(ds, coords, variable, time_index=0, cmap="viridis"):
     # treat inf like missing data: transparent, and excluded from the scale
     data[~np.isfinite(data)] = np.nan
 
-    finite = data[~np.isnan(data)]
-    if finite.size:
-        vmin = float(finite.min())
-        vmax = float(finite.max())
-    else:
-        vmin, vmax = 0.0, 1.0
+    if vmin is None or vmax is None:
+        finite = data[~np.isnan(data)]
+        if finite.size:
+            vmin = float(finite.min())
+            vmax = float(finite.max())
+        else:
+            vmin, vmax = 0.0, 1.0
     if vmin == vmax:
         vmax = vmin + 1.0  # avoid a degenerate color scale
 
