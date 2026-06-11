@@ -260,3 +260,16 @@ def test_metadata_edges_clamped_to_globe(tmp_path):
     assert meta["edges"]["south"] == -90.0 and meta["edges"]["north"] == 90.0
     assert meta["edges"]["west"] == -180.0 and meta["edges"]["east"] == 180.0
     m.close()
+
+
+def test_manager_open_unreadable_file_raises_permission_error(sample_nc, tmp_path):
+    import shutil
+
+    locked = tmp_path / "locked.nc"
+    shutil.copy(sample_nc, locked)
+    locked.chmod(0o000)
+    try:
+        with pytest.raises(PermissionError):
+            DatasetManager().open(locked)
+    finally:
+        locked.chmod(0o644)

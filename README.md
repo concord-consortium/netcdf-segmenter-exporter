@@ -33,6 +33,11 @@ No demo data handy? Generate some:
 (Stop the server before regenerating demo data — an open netCDF handle on
 macOS holds an HDF5 lock and the generator will fail with PermissionError.)
 
+> **macOS note:** if opening a file in Downloads/Desktop/Documents fails with
+> "Permission denied", grant your terminal access under System Settings →
+> Privacy & Security → Files & Folders, or move the file somewhere like this
+> project's `data/` directory.
+
 ## Using the app
 
 1. Enter a file path and click **Open** — variables, the time range, and the

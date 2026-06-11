@@ -69,6 +69,16 @@ async def open_dataset(req: OpenRequest):
         return manager.open(req.path)
     except FileNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc))
+    except PermissionError:
+        raise HTTPException(
+            status_code=403,
+            detail=(
+                f"Permission denied reading {req.path}. On macOS, folders like "
+                "Downloads, Desktop, and Documents are privacy-protected: grant "
+                "your terminal access in System Settings → Privacy & Security → "
+                "Files & Folders, or move the file to an unprotected location."
+            ),
+        )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
 

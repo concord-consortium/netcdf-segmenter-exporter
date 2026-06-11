@@ -130,6 +130,8 @@ class DatasetManager:
             raise FileNotFoundError(f"File not found: {path}")
         try:
             ds = xr.open_dataset(path)  # lazy: no data variables are read yet
+        except PermissionError:
+            raise  # surfaced distinctly: not a parse failure
         except Exception as exc:
             raise ValueError(f"Could not open {path} as netCDF: {exc}") from exc
         try:

@@ -183,3 +183,17 @@ def test_metadata_after_file_deleted_returns_409(client, tmp_path, sample_nc):
     assert client.post("/api/open", json={"path": str(moved)}).status_code == 200
     moved.unlink()
     assert client.get("/api/metadata").status_code == 409
+
+
+def test_open_unreadable_file_returns_403(client, sample_nc, tmp_path):
+    import shutil
+
+    locked = tmp_path / "locked.nc"
+    shutil.copy(sample_nc, locked)
+    locked.chmod(0o000)
+    try:
+        res = client.post("/api/open", json={"path": str(locked)})
+        assert res.status_code == 403
+        assert "permission" in res.json()["detail"].lower()
+    finally:
+        locked.chmod(0o644)
