@@ -40,8 +40,9 @@ macOS holds an HDF5 lock and the generator will fail with PermissionError.)
 
 ## Using the app
 
-1. Enter a file path and click **Open** — variables, the time range, and the
-   map extent populate from the file's metadata.
+1. Enter a file path and click **Open**, or click **Browse…** to pick a
+   netCDF file from an in-app folder listing — variables, the time range,
+   and the map extent populate from the file's metadata.
 2. Pick a variable and scrub the time slider; the slice renders as a colored
    overlay (legend shows the slice's value range).
 3. Filter spatially with the map's draw toolbar (rectangle or polygon — one

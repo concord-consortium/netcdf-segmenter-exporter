@@ -268,6 +268,83 @@ function buildFilters() {
   return filters;
 }
 
+const BROWSE_DIR_KEY = "ncse:lastBrowseDir";
+let browseParent = null;
+
+function joinPath(dir, name) {
+  return dir.endsWith("/") ? dir + name : `${dir}/${name}`;
+}
+
+async function loadBrowse(path) {
+  const errEl = document.getElementById("browse-error");
+  errEl.hidden = true;
+  try {
+    let url = "/api/browse";
+    if (path) url += `?path=${encodeURIComponent(path)}`;
+    const res = await fetch(url);
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ detail: res.statusText }));
+      errEl.textContent =
+        typeof err.detail === "string" ? err.detail : res.statusText;
+      errEl.hidden = false;
+      return false; // previous listing stays visible beneath the error
+    }
+    renderBrowse(await res.json());
+    return true;
+  } catch (err) {
+    errEl.textContent = `Request failed: ${err.message}`;
+    errEl.hidden = false;
+    return false;
+  }
+}
+
+function renderBrowse(listing) {
+  localStorage.setItem(BROWSE_DIR_KEY, listing.path);
+  browseParent = listing.parent;
+  const pathEl = document.getElementById("browse-path");
+  pathEl.textContent = listing.path;
+  pathEl.title = listing.path;
+  document.getElementById("browse-up-btn").disabled = listing.parent === null;
+
+  const list = document.getElementById("browse-list");
+  list.innerHTML = "";
+  for (const d of listing.dirs) {
+    const li = document.createElement("li");
+    li.textContent = `\u{1F4C1} ${d.name}`;
+    li.addEventListener("click", () => loadBrowse(joinPath(listing.path, d.name)));
+    list.appendChild(li);
+  }
+  for (const f of listing.files) {
+    const li = document.createElement("li");
+    li.textContent = `${f.name} (${(f.size_bytes / 1048576).toFixed(1)} MB)`;
+    li.addEventListener("click", () => {
+      document.getElementById("file-path").value = joinPath(listing.path, f.name);
+      document.getElementById("browse-panel").hidden = true;
+      openFile();
+    });
+    list.appendChild(li);
+  }
+  if (!listing.dirs.length && !listing.files.length) {
+    const li = document.createElement("li");
+    li.className = "empty";
+    li.textContent = "(no folders or netCDF files)";
+    list.appendChild(li);
+  }
+}
+
+async function openBrowsePanel() {
+  document.getElementById("browse-panel").hidden = false;
+  const list = document.getElementById("browse-list");
+  if (!list.children.length) {
+    list.innerHTML = '<li class="empty">Loading…</li>';
+  }
+  const remembered = localStorage.getItem(BROWSE_DIR_KEY);
+  const ok = await loadBrowse(remembered || null);
+  if (!ok && remembered) {
+    await loadBrowse(null); // remembered dir vanished or is blocked: go home
+  }
+}
+
 async function exportSubset(format) {
   if (!metadata) {
     setText("status", "Open a file first.");
@@ -320,3 +397,14 @@ document.getElementById("export-nc-btn").addEventListener("click", () => exportS
 document.getElementById("play-btn").addEventListener("click", togglePlayback);
 document.getElementById("step-back-btn").addEventListener("click", () => nudge(-1));
 document.getElementById("step-fwd-btn").addEventListener("click", () => nudge(1));
+document.getElementById("browse-btn").addEventListener("click", () => {
+  const panel = document.getElementById("browse-panel");
+  if (panel.hidden) openBrowsePanel();
+  else panel.hidden = true;
+});
+document.getElementById("browse-up-btn").addEventListener("click", () => {
+  if (browseParent) loadBrowse(browseParent);
+});
+document.getElementById("browse-close-btn").addEventListener("click", () => {
+  document.getElementById("browse-panel").hidden = true;
+});

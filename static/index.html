@@ -16,7 +16,19 @@
     <section>
       <h2>File</h2>
       <input id="file-path" type="text" placeholder="/path/to/data.nc">
-      <button id="open-btn">Open</button>
+      <div class="row">
+        <button id="open-btn">Open</button>
+        <button id="browse-btn" type="button">Browse&#8230;</button>
+      </div>
+      <div id="browse-panel" hidden>
+        <div id="browse-header">
+          <button id="browse-up-btn" type="button" aria-label="Parent folder">&#8593;</button>
+          <span id="browse-path" title=""></span>
+          <button id="browse-close-btn" type="button" aria-label="Close file browser">&#10005;</button>
+        </div>
+        <p id="browse-error" class="muted" hidden></p>
+        <ul id="browse-list"></ul>
+      </div>
       <p id="file-info" class="muted"></p>
     </section>
 
