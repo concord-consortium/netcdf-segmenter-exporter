@@ -1,5 +1,67 @@
 <!DOCTYPE html>
 <html lang="en">
-<head><meta charset="utf-8"><title>netCDF Segmenter &amp; Exporter</title></head>
-<body><p>UI coming soon.</p></body>
+<head>
+  <meta charset="utf-8">
+  <title>netCDF Segmenter &amp; Exporter</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+  <link rel="stylesheet" href="https://unpkg.com/leaflet-draw@1.0.4/dist/leaflet.draw.css">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <aside id="sidebar">
+    <h1>netCDF Segmenter</h1>
+
+    <section>
+      <h2>File</h2>
+      <input id="file-path" type="text" placeholder="/path/to/data.nc">
+      <button id="open-btn">Open</button>
+      <p id="file-info" class="muted"></p>
+    </section>
+
+    <section>
+      <h2>Display</h2>
+      <label>Variable
+        <select id="variable-select"></select>
+      </label>
+      <label>Time step — <span id="time-label"></span>
+        <input id="time-slider" type="range" min="0" max="0" value="0">
+      </label>
+      <div id="legend">
+        <div id="legend-gradient"></div>
+        <div id="legend-labels">
+          <span id="legend-min"></span><span id="legend-max"></span>
+        </div>
+      </div>
+    </section>
+
+    <section>
+      <h2>Filters</h2>
+      <p class="muted">Use the toolbar on the map to draw a rectangle or polygon.</p>
+      <p id="shape-info" class="muted">No shape drawn (whole globe).</p>
+      <button id="clear-shape-btn">Clear shape</button>
+      <label>Start time <input id="time-start" type="text"></label>
+      <label>End time <input id="time-end" type="text"></label>
+      <label>Filter variable
+        <select id="filter-variable"><option value="">(none)</option></select>
+      </label>
+      <div class="row">
+        <label>Min <input id="filter-min" type="number" step="any"></label>
+        <label>Max <input id="filter-max" type="number" step="any"></label>
+      </div>
+    </section>
+
+    <section>
+      <h2>Export</h2>
+      <button id="export-csv-btn">Download CSV</button>
+      <button id="export-nc-btn">Download netCDF</button>
+      <p id="status" class="muted"></p>
+    </section>
+  </aside>
+  <div id="map"></div>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="https://unpkg.com/leaflet-draw@1.0.4/dist/leaflet.draw.js"></script>
+  <script src="app.js"></script>
+</body>
 </html>

@@ -1,0 +1,36 @@
+:root { font-family: system-ui, sans-serif; }
+body { margin: 0; display: flex; height: 100vh; }
+#sidebar {
+  width: 320px; overflow-y: auto; padding: 16px; box-sizing: border-box;
+  background: #f7f7f7; border-right: 1px solid #ddd;
+}
+#map { flex: 1; }
+h1 { font-size: 18px; margin: 0 0 12px; }
+h2 {
+  font-size: 13px; text-transform: uppercase; letter-spacing: 0.05em;
+  color: #666; margin: 20px 0 8px;
+}
+section { margin-bottom: 8px; }
+label { display: block; margin: 8px 0 4px; font-size: 13px; }
+input[type="text"], input[type="number"], select {
+  width: 100%; box-sizing: border-box; padding: 6px;
+}
+input[type="range"] { width: 100%; }
+button { margin-top: 8px; padding: 6px 12px; cursor: pointer; }
+.row { display: flex; gap: 8px; }
+.row label { flex: 1; }
+.muted { color: #888; font-size: 12px; }
+#legend-gradient {
+  height: 12px; border-radius: 3px; margin-top: 8px;
+  /* viridis color stops, matching the backend's default colormap */
+  background: linear-gradient(to right,
+    #440154, #414487, #2a788e, #22a884, #7ad151, #fde725);
+}
+#legend-labels {
+  display: flex; justify-content: space-between;
+  font-size: 11px; color: #555;
+}
+/* gridded data rendered pixel-per-cell: show crisp cells, not browser blur */
+.data-overlay {
+  image-rendering: pixelated;
+}
