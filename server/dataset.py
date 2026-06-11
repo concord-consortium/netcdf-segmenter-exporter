@@ -15,7 +15,8 @@ LAT_UNITS = {"degrees_north", "degree_north", "degrees_n", "degree_n", "degreen"
 LON_UNITS = {"degrees_east", "degree_east", "degrees_e", "degree_e", "degreee", "degreese"}
 
 # time steps per block when scanning a variable's global value range:
-# bounds memory (~210 MB per block for a 596x1385 float32 grid)
+# bounds transient memory to roughly 2-3x the block's native size
+# (~0.5 GB for a 596x1385 float32 grid at 64 steps: block + finite copy)
 RANGE_SCAN_CHUNK = 64
 
 
@@ -229,7 +230,7 @@ class DatasetManager:
             blocks = (da,)
         vmin, vmax = np.inf, -np.inf
         for block in blocks:
-            values = np.asarray(block.values, dtype=float)
+            values = np.asarray(block.values)  # native dtype: no float64 copy
             finite = values[np.isfinite(values)]
             if finite.size:
                 vmin = min(vmin, float(finite.min()))

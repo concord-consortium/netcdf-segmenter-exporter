@@ -46,8 +46,8 @@ macOS holds an HDF5 lock and the generator will fail with PermissionError.)
 2. Pick a variable and scrub the time slider; the slice renders as a colored
    overlay. The color scale and legend are fixed per variable — the global
    min/max across all time steps — so colors are comparable as time changes.
-   The first render of each variable computes that range (a brief delay on
-   multi-GB files).
+   The first render of each variable computes that range (up to ~15 seconds
+   on multi-GB files).
 3. Filter spatially with the map's draw toolbar (rectangle or polygon — one
    shape at a time), temporally with the start/end inputs, and by value with
    the filter variable + min/max inputs.
