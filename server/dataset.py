@@ -217,24 +217,40 @@ class DatasetManager:
             self._ranges[variable] = self._scan_range(variable)
         return self._ranges[variable]
 
-    def _scan_range(self, variable):
+    def iter_value_range(self, variable):
+        """Yield (done_blocks, total_blocks) while computing and caching the
+        variable's global value range. Yields nothing when already cached."""
+        if self.ds is None:
+            raise RuntimeError("No dataset is open")
+        if variable not in self.ds.data_vars:
+            raise KeyError(variable)
+        if variable in self._ranges:
+            return
         da = self.ds[variable]
         time = self.coords.get("time")
         if time and time in da.dims:
             steps = int(da.sizes[time])
-            blocks = (
+            blocks = [
                 da.isel({time: slice(i, i + RANGE_SCAN_CHUNK)})
                 for i in range(0, steps, RANGE_SCAN_CHUNK)
-            )
+            ]
         else:
-            blocks = (da,)
+            blocks = [da]
         vmin, vmax = np.inf, -np.inf
-        for block in blocks:
+        total = len(blocks)
+        for done, block in enumerate(blocks, start=1):
             values = np.asarray(block.values)  # native dtype: no float64 copy
             finite = values[np.isfinite(values)]
             if finite.size:
                 vmin = min(vmin, float(finite.min()))
                 vmax = max(vmax, float(finite.max()))
+            yield done, total
         if not np.isfinite(vmin) or not np.isfinite(vmax):
-            return 0.0, 1.0
-        return vmin, vmax
+            self._ranges[variable] = (0.0, 1.0)
+        else:
+            self._ranges[variable] = (vmin, vmax)
+
+    def _scan_range(self, variable):
+        for _ in self.iter_value_range(variable):
+            pass
+        return self._ranges[variable]

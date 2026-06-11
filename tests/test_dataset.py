@@ -361,3 +361,32 @@ def test_value_range_unknown_variable_raises(sample_nc):
     with pytest.raises(KeyError):
         m.value_range("nope")
     m.close()
+
+
+def test_iter_value_range_reports_progress(tmp_path, monkeypatch):
+    import server.dataset as dataset_module
+
+    monkeypatch.setattr(dataset_module, "RANGE_SCAN_CHUNK", 1)
+    m = DatasetManager()
+    m.open(_write_range_file(tmp_path))  # 3 time steps -> 3 blocks
+    progress = list(m.iter_value_range("v"))
+    assert progress == [(1, 3), (2, 3), (3, 3)]
+    assert m._ranges["v"] == (-5.0, 99.0)  # cached by the generator itself
+    assert m.value_range("v") == (-5.0, 99.0)
+    m.close()
+
+
+def test_iter_value_range_empty_when_cached(sample_nc):
+    m = DatasetManager()
+    m.open(sample_nc)
+    m.value_range("temperature")  # populate the cache
+    assert list(m.iter_value_range("temperature")) == []
+    m.close()
+
+
+def test_iter_value_range_unknown_variable_raises(sample_nc):
+    m = DatasetManager()
+    m.open(sample_nc)
+    with pytest.raises(KeyError):
+        list(m.iter_value_range("nope"))
+    m.close()
