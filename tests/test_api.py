@@ -254,3 +254,18 @@ def test_browse_unreadable_dir_returns_403(client, tmp_path):
         assert "permission" in res.json()["detail"].lower()
     finally:
         locked.chmod(0o755)
+
+
+def test_slice_value_range_fixed_across_time(opened):
+    h0 = opened.get(
+        "/api/slice", params={"variable": "temperature", "time_index": 0}
+    ).headers
+    h3 = opened.get(
+        "/api/slice", params={"variable": "temperature", "time_index": 3}
+    ).headers
+    assert h0["x-vmin"] == h3["x-vmin"]
+    assert h0["x-vmax"] == h3["x-vmax"]
+    # global range over all 4 steps of uniform-[15,25) data
+    lo, hi = float(h0["x-vmin"]), float(h0["x-vmax"])
+    assert 15.0 <= lo < 16.0
+    assert 24.0 < hi < 25.0

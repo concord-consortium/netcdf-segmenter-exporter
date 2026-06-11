@@ -149,8 +149,12 @@ async def slice_png(request: Request, variable: str, time_index: int = 0):
     if request.headers.get("if-none-match") == etag:
         return Response(status_code=304, headers=headers)
     try:
+        # global per-variable scale: colors comparable across all time steps.
+        # Computed after the ETag check so 304 responses never pay the scan.
+        vmin, vmax = manager.value_range(variable)
         png, vmin, vmax = render_slice_png(
-            manager.ds, manager.coords, variable, time_index
+            manager.ds, manager.coords, variable, time_index,
+            vmin=vmin, vmax=vmax,
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))

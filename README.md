@@ -44,7 +44,10 @@ macOS holds an HDF5 lock and the generator will fail with PermissionError.)
    netCDF file from an in-app folder listing — variables, the time range,
    and the map extent populate from the file's metadata.
 2. Pick a variable and scrub the time slider; the slice renders as a colored
-   overlay (legend shows the slice's value range).
+   overlay. The color scale and legend are fixed per variable — the global
+   min/max across all time steps — so colors are comparable as time changes.
+   The first render of each variable computes that range (a brief delay on
+   multi-GB files).
 3. Filter spatially with the map's draw toolbar (rectangle or polygon — one
    shape at a time), temporally with the start/end inputs, and by value with
    the filter variable + min/max inputs.
@@ -78,8 +81,5 @@ macOS holds an HDF5 lock and the generator will fail with PermissionError.)
 - Variables with extra dimensions (e.g. vertical levels) can't be displayed
   on the map or exported to CSV; netCDF exports include them (cropped to the
   selection but otherwise as-is).
-- The slice color scale is computed per time step, so colors aren't
-  comparable across time steps; the legend always reflects the current
-  slice.
 - Value filtering without a spatial/time crop materializes the whole file
   in memory — combine filters for very large files.
