@@ -1,4 +1,5 @@
 import numpy as np
+import pytest
 
 from server.subset import apply_filters
 
@@ -64,3 +65,41 @@ def test_polygon_mask_applies_to_all_variables(open_sample):
     t_nan = np.isnan(out["temperature"].values)
     h_nan = np.isnan(out["humidity"].values)
     assert np.array_equal(t_nan, h_nan)
+
+
+def test_var_filter_min_only(open_sample):
+    ds, coords = open_sample
+    out = apply_filters(
+        ds, coords, var_filter={"variable": "temperature", "min": 20.0, "max": None}
+    )
+    temp = out["temperature"].values
+    assert np.nanmin(temp) >= 20.0
+    assert np.isnan(temp).any()  # fixture spans 15..25, so some cells were masked
+
+
+def test_var_filter_masks_all_variables(open_sample):
+    ds, coords = open_sample
+    out = apply_filters(
+        ds, coords, var_filter={"variable": "temperature", "min": 20.0, "max": 24.0}
+    )
+    assert np.array_equal(
+        np.isnan(out["temperature"].values), np.isnan(out["humidity"].values)
+    )
+
+
+def test_var_filter_unknown_variable_raises(open_sample):
+    ds, coords = open_sample
+    with pytest.raises(ValueError):
+        apply_filters(ds, coords, var_filter={"variable": "nope", "min": 0, "max": 1})
+
+
+def test_filters_compose(open_sample):
+    ds, coords = open_sample
+    out = apply_filters(
+        ds, coords,
+        bbox={"west": -20.0, "south": -10.0, "east": 30.0, "north": 40.0},
+        time_range={"start": "2020-01-01", "end": "2020-01-02"},
+        var_filter={"variable": "temperature", "min": 20.0, "max": None},
+    )
+    assert out.sizes == {"time": 2, "lat": 5, "lon": 5}
+    assert np.nanmin(out["temperature"].values) >= 20.0

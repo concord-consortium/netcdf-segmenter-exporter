@@ -54,4 +54,13 @@ def _apply_polygon(out, lat, lon, polygon):
 
 
 def _apply_var_filter(out, var_filter):
-    raise NotImplementedError  # implemented two tasks from now (TDD)
+    name = var_filter["variable"]
+    if name not in out.data_vars:
+        raise ValueError(f"Unknown filter variable: {name}")
+    da = out[name]
+    cond = xr.ones_like(da, dtype=bool)
+    if var_filter.get("min") is not None:
+        cond = cond & (da >= var_filter["min"])
+    if var_filter.get("max") is not None:
+        cond = cond & (da <= var_filter["max"])
+    return out.where(cond)
