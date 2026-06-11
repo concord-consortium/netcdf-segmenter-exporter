@@ -93,6 +93,7 @@ async function openFile() {
 }
 
 function applyMetadata() {
+  stopPlayback();
   const sizeMb = (metadata.size_bytes / 1048576).toFixed(1);
   setText("file-info", `${metadata.path} (${sizeMb} MB)`);
 
@@ -135,25 +136,95 @@ function updateTimeLabel() {
   }
 }
 
+let playing = false;
+let playToken = 0;
+
+function timeStepCount() {
+  return metadata && metadata.time ? metadata.time.count : 0;
+}
+
+function setTimeIndex(idx) {
+  document.getElementById("time-slider").value = String(idx);
+  updateTimeLabel();
+}
+
+async function nudge(delta) {
+  const count = timeStepCount();
+  if (count <= 1) return;
+  const slider = document.getElementById("time-slider");
+  const idx = Math.min(count - 1, Math.max(0, Number(slider.value) + delta));
+  if (idx === Number(slider.value)) return;
+  setTimeIndex(idx);
+  await refreshOverlay();
+}
+
+function stopPlayback() {
+  playing = false;
+  playToken += 1; // cancels any in-flight play loop
+  const btn = document.getElementById("play-btn");
+  btn.textContent = "▶ Play";
+  btn.setAttribute("aria-label", "Play");
+}
+
+async function startPlayback() {
+  const count = timeStepCount();
+  if (count <= 1) return;
+  const token = ++playToken;
+  playing = true;
+  const btn = document.getElementById("play-btn");
+  btn.textContent = "⏸ Pause";
+  btn.setAttribute("aria-label", "Pause");
+
+  const slider = document.getElementById("time-slider");
+  if (Number(slider.value) >= count - 1) {
+    setTimeIndex(0); // play pressed at the end: restart from the start
+    const ok = await refreshOverlay();
+    if (token !== playToken) return;
+    if (!ok) {
+      stopPlayback();
+      return;
+    }
+  }
+
+  while (token === playToken) {
+    const started = performance.now();
+    const idx = Number(slider.value);
+    if (idx >= count - 1) break; // reached the end
+    setTimeIndex(idx + 1);
+    const ok = await refreshOverlay();
+    if (token !== playToken) return; // paused or restarted while rendering
+    if (!ok) break; // genuine render failure: stop, don't error-loop
+    const stepsPerSec = Number(document.getElementById("speed-select").value);
+    const dwell = Math.max(0, 1000 / stepsPerSec - (performance.now() - started));
+    await new Promise((resolve) => setTimeout(resolve, dwell));
+  }
+  if (token === playToken) stopPlayback();
+}
+
+function togglePlayback() {
+  if (playing) stopPlayback();
+  else startPlayback();
+}
+
 async function refreshOverlay() {
-  if (!metadata) return;
+  if (!metadata) return false;
   const variable = document.getElementById("variable-select").value;
-  if (!variable) return;
+  if (!variable) return false;
   const idx = document.getElementById("time-slider").value;
   const seq = ++overlayRequestSeq;
   try {
     const res = await fetch(
       `/api/slice?variable=${encodeURIComponent(variable)}&time_index=${idx}`
     );
-    if (seq !== overlayRequestSeq) return;
+    if (seq !== overlayRequestSeq) return true; // a newer request owns the overlay — not a failure
     if (!res.ok) {
       setText("status", "Failed to render slice.");
-      return;
+      return false;
     }
     setText("legend-min", Number(res.headers.get("X-Vmin")).toPrecision(4));
     setText("legend-max", Number(res.headers.get("X-Vmax")).toPrecision(4));
     const blob = await res.blob();
-    if (seq !== overlayRequestSeq) return;
+    if (seq !== overlayRequestSeq) return true; // a newer request owns the overlay — not a failure
     const url = URL.createObjectURL(blob);
     const ext = metadata.edges;
     const bounds = [[ext.south, ext.west], [ext.north, ext.east]];
@@ -168,8 +239,10 @@ async function refreshOverlay() {
         className: "data-overlay", // crisp cells for coarse grids (style.css)
       }).addTo(map);
     }
+    return true;
   } catch (err) {
     setText("status", "Failed to render slice.");
+    return false;
   }
 }
 
@@ -232,7 +305,10 @@ document.getElementById("file-path").addEventListener("keydown", (e) => {
   if (e.key === "Enter") openFile();
 });
 document.getElementById("variable-select").addEventListener("change", refreshOverlay);
-document.getElementById("time-slider").addEventListener("input", updateTimeLabel);
+document.getElementById("time-slider").addEventListener("input", () => {
+  if (playing) stopPlayback(); // user takes control
+  updateTimeLabel();
+});
 document.getElementById("time-slider").addEventListener("change", refreshOverlay);
 document.getElementById("clear-shape-btn").addEventListener("click", () => {
   drawnItems.clearLayers();
@@ -241,3 +317,6 @@ document.getElementById("clear-shape-btn").addEventListener("click", () => {
 });
 document.getElementById("export-csv-btn").addEventListener("click", () => exportSubset("csv"));
 document.getElementById("export-nc-btn").addEventListener("click", () => exportSubset("netcdf"));
+document.getElementById("play-btn").addEventListener("click", togglePlayback);
+document.getElementById("step-back-btn").addEventListener("click", () => nudge(-1));
+document.getElementById("step-fwd-btn").addEventListener("click", () => nudge(1));
