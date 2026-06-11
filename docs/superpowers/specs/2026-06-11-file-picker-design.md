@@ -77,7 +77,10 @@ with no dataset open (independent of `_require_open`).
 - **Errors inline:** a message area (`#browse-error`) inside the panel shows
   the response's `detail` (e.g. the macOS permission guidance) while the
   panel stays usable — user can go up or elsewhere.
-- Brief "Loading…" text in the list area during fetches.
+- "Loading…" appears in the list area only while the panel has no listing
+  yet (first open). During navigation the previous listing stays visible
+  until the new one arrives, so a failed navigation leaves a usable list
+  beneath the inline error.
 - Absolute path of a clicked file = `path + "/" + name` (the API's `path` is
   resolved-absolute; root "/" join must not produce "//" — guard it).
 
