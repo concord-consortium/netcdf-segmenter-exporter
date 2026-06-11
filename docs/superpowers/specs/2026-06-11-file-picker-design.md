@@ -64,10 +64,11 @@ with no dataset open (independent of `_require_open`).
 - Panel contents:
   - Header row: current folder path (`#browse-path`, CSS-truncated with
     `title` attr for the full path), an **↑** up button (`#browse-up-btn`,
-    disabled/hidden when `parent` is null), and a **Close** button
+    disabled — not hidden — when `parent` is null), and a **Close** button
     (`#browse-close-btn`).
   - Scrollable list (`#browse-list`, max-height ≈ 40vh): folders first
-    (📁 prefix), then files (with human-readable size). Click a folder →
+    (📁 prefix), then files with size in MB to one decimal place (matching
+    the existing file-info display). Click a folder →
     navigate into it; click a file → fill `#file-path` with the absolute
     path, call the existing `openFile()`, close the panel.
 - **Last-directory memory:** localStorage key `ncse:lastBrowseDir`, written
