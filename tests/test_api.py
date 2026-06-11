@@ -1,4 +1,5 @@
 import io
+from pathlib import Path
 
 import pandas as pd
 import pytest
@@ -212,3 +213,44 @@ def test_slice_etag_changes_with_renderer_version(opened, monkeypatch):
         "/api/slice", params=params, headers={"If-None-Match": etag_before}
     )
     assert res.status_code == 200
+
+
+def test_browse_lists_directory(client, tmp_path):
+    (tmp_path / "sub").mkdir()
+    (tmp_path / "a.nc").write_bytes(b"xx")
+    res = client.get("/api/browse", params={"path": str(tmp_path)})
+    assert res.status_code == 200
+    body = res.json()
+    assert body["path"] == str(tmp_path.resolve())
+    assert body["parent"] == str(tmp_path.resolve().parent)
+    assert [d["name"] for d in body["dirs"]] == ["sub"]
+    assert [f["name"] for f in body["files"]] == ["a.nc"]
+
+
+def test_browse_defaults_to_home_and_needs_no_open_file(client):
+    # note: no dataset is open in this fixture — browse must work anyway
+    res = client.get("/api/browse")
+    assert res.status_code == 200
+    assert res.json()["path"] == str(Path.home())
+
+
+def test_browse_missing_dir_returns_404(client):
+    res = client.get("/api/browse", params={"path": "/nope/missing"})
+    assert res.status_code == 404
+
+
+def test_browse_file_path_returns_400(client, sample_nc):
+    res = client.get("/api/browse", params={"path": str(sample_nc)})
+    assert res.status_code == 400
+
+
+def test_browse_unreadable_dir_returns_403(client, tmp_path):
+    locked = tmp_path / "locked"
+    locked.mkdir()
+    locked.chmod(0o000)
+    try:
+        res = client.get("/api/browse", params={"path": str(locked)})
+        assert res.status_code == 403
+        assert "permission" in res.json()["detail"].lower()
+    finally:
+        locked.chmod(0o755)

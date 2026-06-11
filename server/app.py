@@ -8,6 +8,7 @@ from fastapi.responses import Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
+from .browse import list_directory
 from .dataset import DatasetManager
 from .export import to_csv_bytes, to_netcdf_bytes
 from .rendering import RENDER_VERSION, render_slice_png
@@ -92,6 +93,26 @@ async def metadata():
         raise HTTPException(
             status_code=409,
             detail="The open file no longer exists on disk; open a file again.",
+        )
+
+
+@app.get("/api/browse")
+async def browse(path: str | None = None):
+    try:
+        return list_directory(path)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+    except NotADirectoryError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    except PermissionError:
+        raise HTTPException(
+            status_code=403,
+            detail=(
+                f"Permission denied listing {path}. On macOS, folders like "
+                "Downloads, Desktop, and Documents are privacy-protected: "
+                "grant your terminal access in System Settings → Privacy & "
+                "Security → Files & Folders, or browse elsewhere."
+            ),
         )
 
 
