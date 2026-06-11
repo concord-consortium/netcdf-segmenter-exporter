@@ -6,7 +6,7 @@ from pathlib import Path
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import Response
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from .dataset import DatasetManager
 from .export import to_csv_bytes, to_netcdf_bytes
@@ -25,12 +25,30 @@ class OpenRequest(BaseModel):
     path: str
 
 
+class BBox(BaseModel):
+    west: float
+    south: float
+    east: float
+    north: float
+
+
+class TimeRange(BaseModel):
+    start: str | None = None
+    end: str | None = None
+
+
+class VarFilter(BaseModel):
+    variable: str
+    min: float | None = None
+    max: float | None = None
+
+
 class ExportRequest(BaseModel):
     format: str  # "csv" | "netcdf"
-    bbox: dict | None = None
-    polygon: list[list[float]] | None = None
-    time_range: dict | None = None
-    var_filter: dict | None = None
+    bbox: BBox | None = None
+    polygon: list[tuple[float, float]] | None = Field(default=None, min_length=3)
+    time_range: TimeRange | None = None
+    var_filter: VarFilter | None = None
 
 
 def _require_open():
@@ -62,7 +80,13 @@ async def metadata():
 
 
 def _slice_etag(variable, time_index):
-    st = manager.path.stat()
+    try:
+        st = manager.path.stat()
+    except OSError:
+        raise HTTPException(
+            status_code=409,
+            detail="The open file no longer exists on disk; open a file again.",
+        )
     key = f"{manager.path}:{st.st_mtime_ns}:{st.st_size}:{variable}:{time_index}"
     return '"' + hashlib.sha1(key.encode()).hexdigest() + '"'
 
@@ -102,11 +126,13 @@ async def export(req: ExportRequest):
     try:
         subset = apply_filters(
             manager.ds, manager.coords,
-            bbox=req.bbox, polygon=req.polygon,
-            time_range=req.time_range, var_filter=req.var_filter,
+            bbox=req.bbox.model_dump() if req.bbox else None,
+            polygon=[list(p) for p in req.polygon] if req.polygon else None,
+            time_range=req.time_range.model_dump() if req.time_range else None,
+            var_filter=req.var_filter.model_dump() if req.var_filter else None,
         )
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc))
+    except (ValueError, TypeError, KeyError) as exc:
+        raise HTTPException(status_code=400, detail=f"Invalid filter parameters: {exc}")
 
     cells = 1
     for dim in manager.coords.values():

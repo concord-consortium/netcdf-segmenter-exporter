@@ -142,3 +142,34 @@ def test_index_page_served(client):
     res = client.get("/")
     assert res.status_code == 200
     assert "text/html" in res.headers["content-type"]
+
+
+def test_export_malformed_bbox_returns_422(opened):
+    res = opened.post("/api/export", json={"format": "csv", "bbox": {"west": -10.0}})
+    assert res.status_code == 422
+
+
+def test_export_bad_time_string_returns_400(opened):
+    res = opened.post(
+        "/api/export",
+        json={"format": "csv", "time_range": {"start": "garbage", "end": None}},
+    )
+    assert res.status_code == 400
+
+
+def test_export_two_point_polygon_returns_422(opened):
+    res = opened.post(
+        "/api/export", json={"format": "csv", "polygon": [[0.0, 0.0], [1.0, 1.0]]}
+    )
+    assert res.status_code == 422
+
+
+def test_slice_after_file_deleted_returns_409(client, tmp_path, sample_nc):
+    import shutil
+
+    moved = tmp_path / "moved.nc"
+    shutil.copy(sample_nc, moved)
+    assert client.post("/api/open", json={"path": str(moved)}).status_code == 200
+    moved.unlink()
+    res = client.get("/api/slice", params={"variable": "temperature", "time_index": 0})
+    assert res.status_code == 409
