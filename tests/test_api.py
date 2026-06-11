@@ -173,3 +173,13 @@ def test_slice_after_file_deleted_returns_409(client, tmp_path, sample_nc):
     moved.unlink()
     res = client.get("/api/slice", params={"variable": "temperature", "time_index": 0})
     assert res.status_code == 409
+
+
+def test_metadata_after_file_deleted_returns_409(client, tmp_path, sample_nc):
+    import shutil
+
+    moved = tmp_path / "moved2.nc"
+    shutil.copy(sample_nc, moved)
+    assert client.post("/api/open", json={"path": str(moved)}).status_code == 200
+    moved.unlink()
+    assert client.get("/api/metadata").status_code == 409

@@ -69,8 +69,9 @@ macOS holds an HDF5 lock and the generator will fail with PermissionError.)
 - Shapes that cross the antimeridian aren't supported (the UI warns and
   clears the shape). Source grids that themselves span the antimeridian
   discontinuously may render with gaps.
-- Variables with extra dimensions (e.g. vertical levels) are listed but
-  can't be displayed or exported — slice them to (time, lat, lon) first.
+- Variables with extra dimensions (e.g. vertical levels) can't be displayed
+  on the map or exported to CSV; netCDF exports include them (cropped to the
+  selection but otherwise as-is).
 - The slice color scale is computed per time step, so colors aren't
   comparable across time steps; the legend always reflects the current
   slice.

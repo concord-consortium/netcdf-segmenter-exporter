@@ -76,7 +76,13 @@ async def open_dataset(req: OpenRequest):
 @app.get("/api/metadata")
 async def metadata():
     _require_open()
-    return manager.metadata()
+    try:
+        return manager.metadata()
+    except OSError:
+        raise HTTPException(
+            status_code=409,
+            detail="The open file no longer exists on disk; open a file again.",
+        )
 
 
 def _slice_etag(variable, time_index):

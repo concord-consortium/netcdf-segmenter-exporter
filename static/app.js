@@ -23,8 +23,10 @@ map.addControl(new L.Control.Draw({
   edit: { featureGroup: drawnItems, edit: false, remove: false },
 }));
 
-// wrap any longitude into [-180, 180] (leaflet world-copies can exceed it)
+// wrap any longitude into [-180, 180] (leaflet world-copies can exceed it);
+// +180 stays +180 so an edge-of-map selection isn't mistaken for a crossing
 function wrapLon(lon) {
+  if (lon === 180) return 180;
   return ((lon + 180) % 360 + 360) % 360 - 180;
 }
 
