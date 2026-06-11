@@ -1,4 +1,5 @@
 import numpy as np
+import pandas as pd
 import xarray as xr
 
 from server.export import to_csv_bytes, to_dataframe, to_netcdf_bytes
@@ -27,6 +28,35 @@ def test_to_csv_bytes_has_header(open_sample):
     data = to_csv_bytes(ds, coords)
     first_line = data.decode("utf-8").splitlines()[0]
     assert first_line == "time,latitude,longitude,temperature,humidity"
+
+
+def test_to_dataframe_excludes_nongrid_variables():
+    times = pd.date_range("2020-01-01", periods=3, freq="D")
+    ds = xr.Dataset(
+        {
+            "temperature": (("time", "lat", "lon"), np.arange(12.0).reshape(3, 2, 2)),
+            "time_bnds": (("time", "nv"), np.arange(6.0).reshape(3, 2)),
+        },
+        coords={"time": times, "lat": [0.0, 1.0], "lon": [0.0, 1.0]},
+    )
+    coords = {"lat": "lat", "lon": "lon", "time": "time"}
+    df = to_dataframe(ds, coords)
+    assert list(df.columns) == ["time", "latitude", "longitude", "temperature"]
+    assert len(df) == 3 * 2 * 2  # no nv cross-product row duplication
+
+
+def test_to_dataframe_renames_alternate_time_coord():
+    ds = xr.Dataset(
+        {"v": (("t", "lat", "lon"), np.zeros((2, 2, 2)))},
+        coords={
+            "t": pd.date_range("2020-01-01", periods=2, freq="D"),
+            "lat": [0.0, 1.0],
+            "lon": [0.0, 1.0],
+        },
+    )
+    coords = {"lat": "lat", "lon": "lon", "time": "t"}
+    df = to_dataframe(ds, coords)
+    assert list(df.columns) == ["time", "latitude", "longitude", "v"]
 
 
 def test_netcdf_bytes_roundtrip(open_sample, tmp_path):

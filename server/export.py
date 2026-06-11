@@ -26,13 +26,23 @@ def to_netcdf_bytes(ds):
 
 def to_dataframe(ds, coords):
     """Long-format DataFrame: time, latitude, longitude, then one column per
-    variable. Rows where every variable is NaN (masked out) are dropped."""
-    df = ds.to_dataframe().reset_index()
-    df = df.rename(columns={coords["lat"]: "latitude", coords["lon"]: "longitude"})
-    data_cols = [str(name) for name in ds.data_vars]
+    variable. Rows where every variable is NaN (masked out) are dropped.
+
+    Only variables living on the (time, lat, lon) grid are exported.
+    Auxiliary variables with other dims (e.g. CF bounds like time_bnds)
+    would cross-product their extra dims into duplicated rows.
+    """
+    lat, lon, time = coords["lat"], coords["lon"], coords.get("time")
+    grid_dims = {d for d in (time, lat, lon) if d is not None}
+    keep = [n for n, da in ds.data_vars.items() if set(da.dims) <= grid_dims]
+    df = ds[keep].to_dataframe().reset_index()
+    rename = {lat: "latitude", lon: "longitude"}
+    if time is not None:
+        rename[time] = "time"
+    df = df.rename(columns=rename)
+    data_cols = [str(n) for n in keep]
     df = df.dropna(subset=data_cols, how="all")
-    time = coords.get("time")
-    lead = [c for c in (time, "latitude", "longitude") if c in df.columns]
+    lead = [c for c in ("time", "latitude", "longitude") if c in df.columns]
     return df[lead + data_cols]
 
 
