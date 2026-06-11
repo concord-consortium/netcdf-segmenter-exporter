@@ -241,7 +241,7 @@ sleep 3
 
 - [ ] **Step 2: Drive the browser through the spec's checklist**
 
-Navigate to http://127.0.0.1:8765/, open `/Users/ddamelin/Development/netCDF-segmenter-exporter/data/demo_global.nc` via the UI, then verify each (PASS/FAIL with evidence):
+Navigate to http://127.0.0.1:8765/, open `data/demo_global.nc` via the UI, then verify each (PASS/FAIL with evidence):
 
 1. Nudge forward: time label advances to index 1's timestamp and the overlay URL changes (evaluate `overlay._url` before/after).
 2. Nudge back at index 0: no-op (label unchanged). Nudge back from index 1 returns to index 0.

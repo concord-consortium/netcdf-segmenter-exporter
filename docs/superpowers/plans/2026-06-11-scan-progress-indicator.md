@@ -406,7 +406,7 @@ sleep 3
 - [ ] **Step 2: Browser checks (PASS/FAIL with evidence)**
 
 Navigate to http://127.0.0.1:8765/, open
-`/Users/ddamelin/Development/netCDF-segmenter-exporter/data/nclimgrid_prcp.nc`
+`data/nclimgrid_prcp.nc`
 (1,577 steps → 25 scan chunks → ~14 s scan).
 
 1. While the first slice loads: `#map-loading` is visible, the `<progress>`
@@ -415,7 +415,7 @@ Navigate to http://127.0.0.1:8765/, open
 2. When the scan finishes: the overlay hides and the prcp slice renders
    (overlay image present, legend shows the global range ≈ [0, 2620.7]).
 3. Nudge forward: NO loading overlay (range cached), frame renders quickly.
-4. Open the demo file `/Users/ddamelin/Development/netCDF-segmenter-exporter/data/demo_global.nc`:
+4. Open the demo file `data/demo_global.nc`:
    first temperature render may flash the bar sub-second (2 chunks) — both
    "appears briefly" and "too fast to observe" are PASS; nudging afterward
    shows no overlay.

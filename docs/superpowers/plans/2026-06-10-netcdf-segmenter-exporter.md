@@ -67,7 +67,7 @@ netCDF-segmenter-exporter/
 - [ ] **Step 1: Initialize the git repository with `main` as the default branch**
 
 ```bash
-cd /Users/ddamelin/Development/netCDF-segmenter-exporter
+cd path/to/netcdf-segmenter-exporter
 git init -b main
 ```
 

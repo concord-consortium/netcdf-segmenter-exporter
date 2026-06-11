@@ -7,6 +7,8 @@ variable value range, then export the subset as netCDF or CSV.
 Large files are handled lazily: only metadata and the currently displayed
 slice are read until you export.
 
+![netCDF Segmenter & Exporter showing a global temperature slice](docs/images/screenshot.png)
+
 ## Setup
 
 ```bash

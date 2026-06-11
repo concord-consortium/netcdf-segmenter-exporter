@@ -431,7 +431,7 @@ sleep 3
 - [ ] **Step 2: Browser checks (PASS/FAIL with evidence)**
 
 Navigate to http://127.0.0.1:8765/, open
-`/Users/ddamelin/Development/netCDF-segmenter-exporter/data/demo_global.nc`.
+`data/demo_global.nc`.
 
 1. Note `#legend-min`/`#legend-max` text at time 0. Nudge forward 3 times:
    the legend text is IDENTICAL after every step (fixed range), while the
