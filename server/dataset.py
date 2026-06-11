@@ -14,6 +14,10 @@ TIME_NAMES = {"time", "t"}
 LAT_UNITS = {"degrees_north", "degree_north", "degrees_n", "degree_n", "degreen", "degreesn"}
 LON_UNITS = {"degrees_east", "degree_east", "degrees_e", "degree_e", "degreee", "degreese"}
 
+# time steps per block when scanning a variable's global value range:
+# bounds memory (~210 MB per block for a 596x1385 float32 grid)
+RANGE_SCAN_CHUNK = 64
+
 
 def _match_coord(ds, names, std_names, units_set):
     """Find a 1D coordinate by name, then standard_name, then units.
@@ -123,6 +127,7 @@ class DatasetManager:
         self.ds = None
         self.coords = None
         self.path = None
+        self._ranges = {}
 
     def open(self, path):
         path = Path(path)
@@ -148,6 +153,7 @@ class DatasetManager:
         if self.ds is not None:
             self.ds.close()
         self.ds = self.coords = self.path = None
+        self._ranges = {}
 
     def metadata(self):
         if self.ds is None:
@@ -194,3 +200,40 @@ class DatasetManager:
             },
             "edges": {"south": south, "north": north, "west": west, "east": east},
         }
+
+    def value_range(self, variable):
+        """Global (vmin, vmax) of a variable across all time steps, cached.
+
+        Non-finite values are excluded; an all-non-finite variable falls
+        back to (0.0, 1.0). The first call per variable scans the whole
+        variable (seconds for multi-GB files); later calls are cached.
+        """
+        if self.ds is None:
+            raise RuntimeError("No dataset is open")
+        if variable not in self.ds.data_vars:
+            raise KeyError(variable)
+        if variable not in self._ranges:
+            self._ranges[variable] = self._scan_range(variable)
+        return self._ranges[variable]
+
+    def _scan_range(self, variable):
+        da = self.ds[variable]
+        time = self.coords.get("time")
+        if time and time in da.dims:
+            steps = int(da.sizes[time])
+            blocks = (
+                da.isel({time: slice(i, i + RANGE_SCAN_CHUNK)})
+                for i in range(0, steps, RANGE_SCAN_CHUNK)
+            )
+        else:
+            blocks = (da,)
+        vmin, vmax = np.inf, -np.inf
+        for block in blocks:
+            values = np.asarray(block.values, dtype=float)
+            finite = values[np.isfinite(values)]
+            if finite.size:
+                vmin = min(vmin, float(finite.min()))
+                vmax = max(vmax, float(finite.max()))
+        if not np.isfinite(vmin) or not np.isfinite(vmax):
+            return 0.0, 1.0
+        return vmin, vmax

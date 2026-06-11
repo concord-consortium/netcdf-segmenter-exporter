@@ -1,4 +1,5 @@
 import numpy as np
+import pandas as pd
 import pytest
 import xarray as xr
 
@@ -273,3 +274,90 @@ def test_manager_open_unreadable_file_raises_permission_error(sample_nc, tmp_pat
             DatasetManager().open(locked)
     finally:
         locked.chmod(0o644)
+
+
+def _write_range_file(tmp_path):
+    """3 time steps; global min in step 0, global max in step 2, one inf."""
+    times = pd.date_range("2020-01-01", periods=3, freq="D")
+    data = np.full((3, 2, 2), 10.0)
+    data[0, 0, 0] = -5.0
+    data[2, 1, 1] = 99.0
+    data[1, 0, 1] = np.inf  # must be excluded from the range
+    ds = xr.Dataset(
+        {"v": (("time", "lat", "lon"), data)},
+        coords={"time": times, "lat": [0.0, 1.0], "lon": [0.0, 1.0]},
+    )
+    path = tmp_path / "range.nc"
+    ds.to_netcdf(path)
+    ds.close()
+    return path
+
+
+def test_value_range_spans_all_time_steps_excluding_nonfinite(tmp_path):
+    m = DatasetManager()
+    m.open(_write_range_file(tmp_path))
+    assert m.value_range("v") == (-5.0, 99.0)
+    m.close()
+
+
+def test_value_range_chunked_scan_matches(tmp_path, monkeypatch):
+    import server.dataset as dataset_module
+
+    # force one time step per block: min and max live in DIFFERENT blocks,
+    # proving the cross-block reduction
+    monkeypatch.setattr(dataset_module, "RANGE_SCAN_CHUNK", 1)
+    m = DatasetManager()
+    m.open(_write_range_file(tmp_path))
+    assert m.value_range("v") == (-5.0, 99.0)
+    m.close()
+
+
+def test_value_range_caches_scan(sample_nc, monkeypatch):
+    m = DatasetManager()
+    m.open(sample_nc)
+    calls = {"n": 0}
+    real = m._scan_range
+
+    def counting(variable):
+        calls["n"] += 1
+        return real(variable)
+
+    monkeypatch.setattr(m, "_scan_range", counting)
+    first = m.value_range("temperature")
+    second = m.value_range("temperature")
+    assert first == second
+    assert calls["n"] == 1
+    m.close()
+
+
+def test_value_range_resets_on_new_open(sample_nc, rotated_nc):
+    m = DatasetManager()
+    m.open(sample_nc)
+    m.value_range("temperature")
+    m.open(rotated_nc)
+    assert m._ranges == {}          # cache cleared with the old file
+    lo, hi = m.value_range("temperature")
+    assert lo < hi                  # recomputed for the new file
+    m.close()
+
+
+def test_value_range_all_nan_falls_back(tmp_path):
+    ds = xr.Dataset(
+        {"v": (("lat", "lon"), np.full((2, 2), np.nan))},
+        coords={"lat": [0.0, 1.0], "lon": [0.0, 1.0]},
+    )
+    path = tmp_path / "allnan.nc"
+    ds.to_netcdf(path)
+    ds.close()
+    m = DatasetManager()
+    m.open(path)
+    assert m.value_range("v") == (0.0, 1.0)
+    m.close()
+
+
+def test_value_range_unknown_variable_raises(sample_nc):
+    m = DatasetManager()
+    m.open(sample_nc)
+    with pytest.raises(KeyError):
+        m.value_range("nope")
+    m.close()
