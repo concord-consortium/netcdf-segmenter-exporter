@@ -35,9 +35,12 @@ the time slider:
   label, `await refreshOverlay()`, then wait the remainder of the speed
   interval (`max(0, 1000/stepsPerSec − renderTime)`). Playback never outruns
   the server; on slow files it degrades to as-fast-as-frames-render.
-- **`refreshOverlay` returns a boolean** (true when the overlay was updated;
-  false on failure or when superseded by a newer request). This is the only
-  change to existing code paths.
+- **`refreshOverlay` returns a boolean** — false only on genuine failure
+  (HTTP error, network error, no file/variable). A request superseded by a
+  newer one returns **true**: a newer request owns the overlay, which is not
+  a failure — otherwise a nudge during playback (which supersedes the play
+  tick's render) would wrongly stop playback. This is the only change to
+  existing code paths.
 - **Stop conditions:** reaching the last step (button returns to ▶); pressing
   pause; a frame render returning false (prevents error-looping when the
   server is gone — the status line already shows the failure); the user
